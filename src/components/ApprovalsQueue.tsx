@@ -368,15 +368,11 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                             )}
                           </div>
 
-                          {/* Existing Calling Badge */}
-                          {existingCallings.length > 0 ? (
+                          {/* Existing Calling Badge (if any) */}
+                          {existingCallings.length > 0 && (
                             <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center space-x-1">
                               <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
                               <span>Currently: {existingCallings.map(c => `${c.title} (${c.organization})`).join(', ')}</span>
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-slate-400 flex items-center space-x-1">
-                              <span>✓ No other calling currently assigned</span>
                             </div>
                           )}
 
