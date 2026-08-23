@@ -46,13 +46,22 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       console.log('Firestore is empty. Seeding initial Masagana 2nd Ward callings & proposals...');
       await seedInitialData();
     } else {
-      // Sync released calling if previously seeded with old data
+      // Sync released callings if previously seeded with old data
       const ss9DocRef = doc(db, CALLINGS_COLLECTION, 'ss-9');
       const ss9Snap = await getDoc(ss9DocRef);
       if (ss9Snap.exists() && ss9Snap.data()?.memberName === 'Bala, Antonette Triñanes Oneza') {
         const ss9Calling = INITIAL_CALLINGS.find(c => c.id === 'ss-9');
         if (ss9Calling) {
           await setDoc(ss9DocRef, cleanForFirestore(ss9Calling), { merge: true });
+        }
+      }
+
+      const oth6DocRef = doc(db, CALLINGS_COLLECTION, 'oth-6');
+      const oth6Snap = await getDoc(oth6DocRef);
+      if (oth6Snap.exists() && oth6Snap.data()?.memberName === 'Reyes, Matfrancis Castillo') {
+        const oth6Calling = INITIAL_CALLINGS.find(c => c.id === 'oth-6');
+        if (oth6Calling) {
+          await setDoc(oth6DocRef, cleanForFirestore(oth6Calling), { merge: true });
         }
       }
     }
