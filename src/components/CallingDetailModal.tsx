@@ -10,6 +10,7 @@ interface CallingDetailModalProps {
   onProposeForCalling: (calling: Calling) => void;
   onToggleSetApart: (callingId: string) => void;
   onDeleteCalling?: (callingId: string, callingTitle: string) => void;
+  onDeleteProposal?: (proposalId: string, callingTitle?: string) => void;
 }
 
 export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
@@ -19,6 +20,7 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
   onProposeForCalling,
   onToggleSetApart,
   onDeleteCalling,
+  onDeleteProposal,
 }) => {
   if (!calling) return null;
 
@@ -113,9 +115,21 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
                   <div key={p.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
                     <div className="flex items-center justify-between font-bold text-slate-800">
                       <span>Proposed: {p.proposedMemberName}</span>
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                        {p.finalStatus.replace('_', ' ')}
-                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                          {p.finalStatus.replace('_', ' ')}
+                        </span>
+                        {onDeleteProposal && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteProposal(p.id, p.callingTitle || calling.title)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            title="Delete proposal"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Multiple Candidates Pool Display */}

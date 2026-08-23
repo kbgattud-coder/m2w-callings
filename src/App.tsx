@@ -798,6 +798,32 @@ export default function App() {
     }
   };
 
+  // Delete a Calling Proposal
+  const handleDeleteProposal = async (proposalId: string, callingTitle?: string) => {
+    const target = proposals.find(p => p.id === proposalId);
+    const title = callingTitle || target?.callingTitle || 'this proposal';
+
+    if (!confirm(`Are you sure you want to delete the proposal for "${title}"? This will permanently remove it from the approvals queue.`)) {
+      return;
+    }
+
+    // 1. Optimistic removal from state
+    setProposals(prev => prev.filter(p => p.id !== proposalId));
+
+    // 2. Persist locally
+    const updated = proposals.filter(p => p.id !== proposalId);
+    localStorage.setItem(STORAGE_KEYS.PROPOSALS, JSON.stringify(updated));
+
+    setSyncStatus('syncing');
+    try {
+      await deleteProposalFromFirestore(proposalId);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to delete proposal from Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
   // Reset Data to Original Default in Cloud Firestore
   const handleResetData = async () => {
     if (confirm('Are you sure you want to reset all calling approvals and restoration data to the ward default report in cloud Firestore?')) {
@@ -895,6 +921,7 @@ export default function App() {
               onRemoveCandidateFromProposal={handleRemoveCandidateFromProposal}
               onSuperAdminApproveAll={handleSuperAdminApproveAll}
               onSustainCalling={handleSustainCalling}
+              onDeleteProposal={handleDeleteProposal}
             />
           )}
 
@@ -957,6 +984,7 @@ export default function App() {
         onProposeForCalling={handleOpenProposeForCalling}
         onToggleSetApart={handleToggleSetApart}
         onDeleteCalling={handleDeleteCalling}
+        onDeleteProposal={handleDeleteProposal}
       />
 
       <AddCustomCallingModal

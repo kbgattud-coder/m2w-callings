@@ -38,6 +38,7 @@ interface ApprovalsQueueProps {
   onRemoveCandidateFromProposal?: (proposalId: string, candidateId: string) => void;
   onSuperAdminApproveAll?: (proposalId: string) => void;
   onSustainCalling: (proposal: CallingProposal) => void;
+  onDeleteProposal?: (proposalId: string, title?: string) => void;
 }
 
 export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
@@ -52,6 +53,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   onRemoveCandidateFromProposal,
   onSuperAdminApproveAll,
   onSustainCalling,
+  onDeleteProposal,
 }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'approved_action' | 'declined'>('pending');
   const [noteInputMap, setNoteInputMap] = useState<Record<string, string>>({});
@@ -210,9 +212,21 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   </h3>
                 </div>
 
-                <div className="flex items-center space-x-2 text-xs text-slate-400">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Proposed {proposal.dateProposed} by <strong>{proposal.proposedByName}</strong></span>
+                <div className="flex items-center space-x-3 text-xs text-slate-400">
+                  <div className="flex items-center space-x-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Proposed {proposal.dateProposed} by <strong>{proposal.proposedByName}</strong></span>
+                  </div>
+                  {onDeleteProposal && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteProposal(proposal.id, proposal.callingTitle)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                      title="Delete this proposal"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
