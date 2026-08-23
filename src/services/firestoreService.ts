@@ -5,6 +5,7 @@ import {
   deleteDoc, 
   onSnapshot, 
   getDocs, 
+  getDoc,
   writeBatch,
   query,
   orderBy
@@ -44,6 +45,16 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     if (callingsSnap.empty) {
       console.log('Firestore is empty. Seeding initial Masagana 2nd Ward callings & proposals...');
       await seedInitialData();
+    } else {
+      // Sync released calling if previously seeded with old data
+      const ss9DocRef = doc(db, CALLINGS_COLLECTION, 'ss-9');
+      const ss9Snap = await getDoc(ss9DocRef);
+      if (ss9Snap.exists() && ss9Snap.data()?.memberName === 'Bala, Antonette Triñanes Oneza') {
+        const ss9Calling = INITIAL_CALLINGS.find(c => c.id === 'ss-9');
+        if (ss9Calling) {
+          await setDoc(ss9DocRef, cleanForFirestore(ss9Calling), { merge: true });
+        }
+      }
     }
   } catch (error) {
     console.error('Error checking or seeding Firestore database:', error);
