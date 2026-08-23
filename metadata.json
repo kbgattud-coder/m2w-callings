@@ -1,0 +1,6 @@
+{
+  "name": "Masagana 2nd Ward Calling Approvals",
+  "description": "Church calling approvals and vacancy management tool with 3-point bishopric sign-off for Masagana 2nd Ward.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
