@@ -1,18 +1,21 @@
 import React from 'react';
 import { 
   Building2, 
-  Menu,
-  X
+  Menu, 
+  X,
+  Loader2
 } from 'lucide-react';
 
 interface NavbarProps {
   isMobileSidebarOpen: boolean;
   onToggleMobileSidebar: () => void;
+  syncStatus?: 'connecting' | 'connected' | 'syncing' | 'error';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   isMobileSidebarOpen,
   onToggleMobileSidebar,
+  syncStatus = 'connected',
 }) => {
   return (
     <header className="lg:hidden bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-2xs px-4 py-3">
@@ -36,7 +39,36 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Sync Status Badge */}
+        <div className="flex items-center space-x-1.5 text-[11px] px-2 py-1 rounded-full bg-slate-100 border border-slate-200">
+          {syncStatus === 'connected' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-slate-700 font-medium">Cloud Synced</span>
+            </>
+          )}
+          {syncStatus === 'syncing' && (
+            <>
+              <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />
+              <span className="text-orange-700 font-medium">Syncing...</span>
+            </>
+          )}
+          {syncStatus === 'connecting' && (
+            <>
+              <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+              <span className="text-blue-700 font-medium">Connecting...</span>
+            </>
+          )}
+          {syncStatus === 'error' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="text-rose-700 font-medium">Offline</span>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );
 };
+

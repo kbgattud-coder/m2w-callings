@@ -6,11 +6,15 @@ import {
   AlertCircle, 
   Clock, 
   BarChart3, 
-  Filter,
-  Layers,
-  RotateCcw,
-  LogOut,
-  X
+  Filter, 
+  Layers, 
+  RotateCcw, 
+  LogOut, 
+  X,
+  Cloud,
+  CloudCheck,
+  CloudAlert,
+  Loader2
 } from 'lucide-react';
 
 export const ORGANIZATIONS = [
@@ -42,6 +46,7 @@ interface SidebarProps {
     vacantCount: number;
   };
   callingCountByOrg: Record<string, number>;
+  syncStatus?: 'connecting' | 'connected' | 'syncing' | 'error';
   onResetData: () => void;
   onLogout: () => void;
   isMobileOpen: boolean;
@@ -56,6 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectOrg,
   metrics,
   callingCountByOrg,
+  syncStatus = 'connected',
   onResetData,
   onLogout,
   isMobileOpen,
@@ -261,6 +267,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 3. BOTTOM ACCOUNT PROFILE & ACTION FOOTER */}
         <div className="p-3 bg-slate-50/80 border-t border-slate-200/80 space-y-2">
           
+          {/* Cloud Database Sync Status Pill */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/80 border border-slate-200/70 text-[11px]">
+            <div className="flex items-center space-x-1.5">
+              {syncStatus === 'connected' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-semibold text-emerald-800">Cloud Live Sync</span>
+                </>
+              )}
+              {syncStatus === 'syncing' && (
+                <>
+                  <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />
+                  <span className="font-semibold text-orange-700">Syncing to Cloud...</span>
+                </>
+              )}
+              {syncStatus === 'connecting' && (
+                <>
+                  <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                  <span className="font-semibold text-blue-700">Connecting Cloud...</span>
+                </>
+              )}
+              {syncStatus === 'error' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <span className="font-semibold text-rose-700">Offline / Local Mode</span>
+                </>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">Firestore</span>
+          </div>
+
           {/* User Profile Card */}
           <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
             <div className="flex items-center space-x-2.5 min-w-0">

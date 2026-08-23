@@ -29,7 +29,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
 
   const reviewCallings = callings.filter(c => {
     const tenure = calculateTenure(c.sustainedDate);
-    const isLongTenure = !c.isVacant && tenure.totalMonths >= 24;
+    const isLongTenure = !c.isVacant && tenure.totalMonths >= 36;
 
     if (!c.isVacant && !isLongTenure) return false;
 
@@ -51,7 +51,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
   const longTenureCount = callings.filter(c => {
     if (c.isVacant) return false;
     const t = calculateTenure(c.sustainedDate);
-    return t.totalMonths >= 24;
+    return t.totalMonths >= 36;
   }).length;
 
   return (
@@ -67,7 +67,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
             <h2 className="text-base font-bold text-slate-900 tracking-tight">Consider for Review</h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Vacant positions needing callings and members who have served for 2 or more years.
+            Vacant positions needing callings and members who have served for 3 or more years.
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
               filterType === 'long_tenure' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'hover:text-slate-900'
             }`}
           >
-            Serving 2+ Yrs ({longTenureCount})
+            Serving 3+ Yrs ({longTenureCount})
           </button>
         </div>
       </div>
@@ -119,7 +119,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
                     </span>
                   ) : (
                     <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
-                      Serving 2+ Yrs
+                      Serving 3+ Yrs
                     </span>
                   )}
                 </div>

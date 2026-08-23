@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Calling } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
 import { 
-  BarChart3, 
   Clock, 
-  UserX, 
-  AlertTriangle, 
-  CheckCircle2, 
-  ShieldCheck,
-  TrendingUp,
-  Sparkles
+  Search, 
+  Filter, 
+  ArrowUpRight, 
+  UserCheck, 
+  Sparkles,
+  Calendar,
+  Building2,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 
 interface AnalyticsViewProps {
@@ -18,239 +20,445 @@ interface AnalyticsViewProps {
   onProposeForCalling: (calling: Calling) => void;
 }
 
+type TenureBracket = 'all' | '0_6_months' | '6_24_months' | '2_3_years' | '3_plus_years';
+
+interface MemberTenureItem {
+  calling: Calling;
+  tenure: ReturnType<typeof calculateTenure>;
+  bracket: TenureBracket;
+}
+
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   callings,
   onSelectCalling,
   onProposeForCalling,
 }) => {
-  // Org breakdown calculations
-  const orgStatsMap = React.useMemo(() => {
-    const map = new Map<string, { total: number; vacant: number }>();
-    callings.forEach(c => {
-      const current = map.get(c.organization) || { total: 0, vacant: 0 };
-      current.total += 1;
-      if (c.isVacant) current.vacant += 1;
-      map.set(c.organization, current);
-    });
-    return Array.from(map.entries()).map(([org, stats]) => ({
-      organization: org,
-      total: stats.total,
-      vacant: stats.vacant,
-      filled: stats.total - stats.vacant,
-      vacantPct: Math.round((stats.vacant / stats.total) * 100),
-    })).sort((a, b) => b.vacant - a.vacant);
-  }, [callings]);
+  // Active selected tenure bracket (defaults to 3+ Years)
+  const [selectedBracket, setSelectedBracket] = useState<TenureBracket>('3_plus_years');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState('All');
 
-  // Tenure Breakdown
-  const tenureBreakdown = React.useMemo(() => {
-    let under6mos = 0;
-    let mos6To24 = 0;
-    let yrs2To3 = 0;
-    let over3yrs = 0;
+  // Process all filled callings and calculate tenure
+  const allTenureItems: MemberTenureItem[] = useMemo(() => {
+    const items: MemberTenureItem[] = [];
 
-    const longServingList: Array<{ calling: Calling; tenure: ReturnType<typeof calculateTenure> }> = [];
+    callings.forEach((calling) => {
+      if (!calling.isVacant && calling.sustainedDate && calling.memberName) {
+        const tenure = calculateTenure(calling.sustainedDate);
+        let bracket: TenureBracket = '0_6_months';
 
-    callings.forEach(c => {
-      if (!c.isVacant && c.sustainedDate) {
-        const tenure = calculateTenure(c.sustainedDate);
-        if (tenure.totalMonths < 6) under6mos++;
-        else if (tenure.totalMonths < 24) mos6To24++;
-        else if (tenure.totalMonths < 36) {
-          yrs2To3++;
-          longServingList.push({ calling: c, tenure });
+        if (tenure.totalMonths < 6) {
+          bracket = '0_6_months';
+        } else if (tenure.totalMonths < 24) {
+          bracket = '6_24_months';
+        } else if (tenure.totalMonths < 36) {
+          bracket = '2_3_years';
         } else {
-          over3yrs++;
-          longServingList.push({ calling: c, tenure });
+          bracket = '3_plus_years';
         }
+
+        items.push({
+          calling,
+          tenure,
+          bracket,
+        });
       }
     });
 
-    longServingList.sort((a, b) => b.tenure.totalMonths - a.tenure.totalMonths);
+    // Sort by longest tenure first
+    return items.sort((a, b) => b.tenure.totalMonths - a.tenure.totalMonths);
+  }, [callings]);
 
+  // Counts per bracket
+  const counts = useMemo(() => {
     return {
-      under6mos,
-      mos6To24,
-      yrs2To3,
-      over3yrs,
-      longServingList,
+      all: allTenureItems.length,
+      '0_6_months': allTenureItems.filter((i) => i.bracket === '0_6_months').length,
+      '6_24_months': allTenureItems.filter((i) => i.bracket === '6_24_months').length,
+      '2_3_years': allTenureItems.filter((i) => i.bracket === '2_3_years').length,
+      '3_plus_years': allTenureItems.filter((i) => i.bracket === '3_plus_years').length,
     };
-  }, [callings]);
+  }, [allTenureItems]);
 
-  // Needs setting apart list
-  const needsSetApartList = React.useMemo(() => {
-    return callings.filter(c => !c.isVacant && !c.setApart);
-  }, [callings]);
+  // Unique organizations with filled callings
+  const organizationsList = useMemo(() => {
+    const set = new Set<string>();
+    allTenureItems.forEach((item) => set.add(item.calling.organization));
+    return ['All', ...Array.from(set).sort()];
+  }, [allTenureItems]);
+
+  // Filtered list based on selected bracket, search query, and org filter
+  const displayedItems = useMemo(() => {
+    return allTenureItems.filter((item) => {
+      // Bracket filter
+      if (selectedBracket !== 'all' && item.bracket !== selectedBracket) {
+        return false;
+      }
+
+      // Organization filter
+      if (selectedOrgFilter !== 'All' && item.calling.organization !== selectedOrgFilter) {
+        return false;
+      }
+
+      // Search query filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const nameMatch = item.calling.memberName?.toLowerCase().includes(query);
+        const titleMatch = item.calling.title.toLowerCase().includes(query);
+        const orgMatch = item.calling.organization.toLowerCase().includes(query);
+        if (!nameMatch && !titleMatch && !orgMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allTenureItems, selectedBracket, selectedOrgFilter, searchQuery]);
+
+  // Helper for bracket labels and styles
+  const getBracketInfo = (bracket: TenureBracket) => {
+    switch (bracket) {
+      case '0_6_months':
+        return {
+          title: '0 – 6 Months',
+          subtitle: 'Recently Called',
+          description: 'Members called within the last 6 months.',
+          color: 'emerald',
+          badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        };
+      case '6_24_months':
+        return {
+          title: '6 – 24 Months',
+          subtitle: 'Standard Serving Term',
+          description: 'Members actively serving within typical ward tenure.',
+          color: 'blue',
+          badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
+        };
+      case '2_3_years':
+        return {
+          title: '2 – 3 Years',
+          subtitle: '24 to 35 Months',
+          description: 'Approaching long-term service period.',
+          color: 'amber',
+          badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+        };
+      case '3_plus_years':
+        return {
+          title: '3+ Years',
+          subtitle: '36+ Months (Extended)',
+          description: 'Long-serving members recommended for bishopric review.',
+          color: 'purple',
+          badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+        };
+      default:
+        return {
+          title: 'All Serving Members',
+          subtitle: 'Complete Ward Roster',
+          description: 'All currently filled calling positions across the ward.',
+          color: 'slate',
+          badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
+        };
+    }
+  };
+
+  const currentInfo = getBracketInfo(selectedBracket);
 
   return (
     <div className="space-y-6">
       
-      {/* Top Banner */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+      {/* Top Header Banner */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-            <span>Ward Calling Analytics & Tenure Review</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Key insights on vacancy distribution across organizations and tenure monitoring for bishopric review.
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700">
+              <Clock className="w-4 h-4" />
+            </div>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">Length of Service & Tenure Analytics</h2>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Click on any tenure distribution card below to explore and review ward members serving within that timeframe.
           </p>
+        </div>
+
+        {/* Reset to All or Count Badge */}
+        <div className="flex items-center space-x-2">
+          <button
+            id="btn-filter-all-tenure"
+            onClick={() => setSelectedBracket(selectedBracket === 'all' ? '3_plus_years' : 'all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              selectedBracket === 'all'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            {selectedBracket === 'all' ? '✓ Showing All' : `Show All (${counts.all})`}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 4 Interactive Length of Service Distribution Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Organization Vacancy Distribution Bar Chart */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+        {/* Card 1: 0 - 6 Months */}
+        <button
+          id="card-tenure-0-6mos"
+          type="button"
+          onClick={() => setSelectedBracket('0_6_months')}
+          className={`text-left p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden group ${
+            selectedBracket === '0_6_months'
+              ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+              : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-sm bg-gradient-to-b from-emerald-50/30 to-white'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-              <UserX className="w-4 h-4 text-amber-600" />
-              <span>Vacancies by Organization</span>
-            </h3>
-            <span className="text-xs text-slate-500">Vacant / Total</span>
-          </div>
-
-          <div className="space-y-3">
-            {orgStatsMap.map((item) => (
-              <div key={item.organization} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-800">{item.organization}</span>
-                  <span className="text-slate-600 font-medium">
-                    <strong className="text-amber-600">{item.vacant} vacant</strong> / {item.total} positions ({item.vacantPct}%)
-                  </span>
-                </div>
-
-                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden flex">
-                  {/* Filled Portion */}
-                  <div 
-                    className="bg-emerald-500 h-full" 
-                    style={{ width: `${100 - item.vacantPct}%` }}
-                    title={`Filled: ${item.filled}`}
-                  />
-                  {/* Vacant Portion */}
-                  <div 
-                    className="bg-amber-400 h-full" 
-                    style={{ width: `${item.vacantPct}%` }}
-                    title={`Vacant: ${item.vacant}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Tenure Distribution Breakdown */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-          <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-            <Clock className="w-4 h-4 text-purple-600" />
-            <span>Length of Service Distribution</span>
-          </h3>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-950">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 block">0 - 6 Months</span>
-              <span className="text-2xl font-bold mt-1 block">{tenureBreakdown.under6mos}</span>
-              <span className="text-[11px] text-emerald-800">Recently called</span>
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-blue-950">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-blue-700 block">6 - 24 Months</span>
-              <span className="text-2xl font-bold mt-1 block">{tenureBreakdown.mos6To24}</span>
-              <span className="text-[11px] text-blue-800">Standard serving term</span>
-            </div>
-
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-950">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 block">2 - 3 Years</span>
-              <span className="text-2xl font-bold mt-1 block">{tenureBreakdown.yrs2To3}</span>
-              <span className="text-[11px] text-amber-800">Suggested for review</span>
-            </div>
-
-            <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 text-purple-950">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-purple-700 block">3+ Years</span>
-              <span className="text-2xl font-bold mt-1 block">{tenureBreakdown.over3yrs}</span>
-              <span className="text-[11px] text-purple-800">Long service period</span>
-            </div>
-          </div>
-
-          {/* Setting Apart Pending Box */}
-          <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-              <span className="flex items-center space-x-1.5">
-                <AlertTriangle className="w-4 h-4 text-purple-600" />
-                <span>Awaiting Setting Apart ({needsSetApartList.length})</span>
-              </span>
-            </div>
-            {needsSetApartList.length > 0 ? (
-              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                {needsSetApartList.map(c => (
-                  <div key={c.id} className="text-xs bg-white p-2 rounded border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-slate-900 block">{c.memberName}</span>
-                      <span className="text-[10px] text-slate-500">{c.title} • {c.organization}</span>
-                    </div>
-                    <button
-                      onClick={() => onSelectCalling(c)}
-                      className="text-[10px] text-blue-600 font-semibold hover:underline"
-                    >
-                      View
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-emerald-700 font-medium">All called members are currently set apart!</p>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+              0 – 6 Months
+            </span>
+            {selectedBracket === '0_6_months' && (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             )}
           </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {counts['0_6_months']}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium">members</span>
+          </div>
+          <p className="text-xs font-medium text-emerald-800 mt-1">Recently called</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">&lt; 6 months of service</p>
+        </button>
 
-        </div>
+        {/* Card 2: 6 - 24 Months */}
+        <button
+          id="card-tenure-6-24mos"
+          type="button"
+          onClick={() => setSelectedBracket('6_24_months')}
+          className={`text-left p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden group ${
+            selectedBracket === '6_24_months'
+              ? 'bg-white border-blue-500 ring-2 ring-blue-500/20 shadow-md'
+              : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm bg-gradient-to-b from-blue-50/30 to-white'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+              6 – 24 Months
+            </span>
+            {selectedBracket === '6_24_months' && (
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            )}
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {counts['6_24_months']}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium">members</span>
+          </div>
+          <p className="text-xs font-medium text-blue-800 mt-1">Standard serving term</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">0.5 to 2 years</p>
+        </button>
+
+        {/* Card 3: 2 - 3 Years */}
+        <button
+          id="card-tenure-2-3yrs"
+          type="button"
+          onClick={() => setSelectedBracket('2_3_years')}
+          className={`text-left p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden group ${
+            selectedBracket === '2_3_years'
+              ? 'bg-white border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+              : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-sm bg-gradient-to-b from-amber-50/30 to-white'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
+              2 – 3 Years
+            </span>
+            {selectedBracket === '2_3_years' && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            )}
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {counts['2_3_years']}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium">members</span>
+          </div>
+          <p className="text-xs font-medium text-amber-800 mt-1">24 to 35 months</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Approaching 3 years</p>
+        </button>
+
+        {/* Card 4: 3+ Years */}
+        <button
+          id="card-tenure-3plus-yrs"
+          type="button"
+          onClick={() => setSelectedBracket('3_plus_years')}
+          className={`text-left p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden group ${
+            selectedBracket === '3_plus_years'
+              ? 'bg-white border-purple-500 ring-2 ring-purple-500/20 shadow-md'
+              : 'bg-white border-slate-200 hover:border-purple-300 hover:shadow-sm bg-gradient-to-b from-purple-50/30 to-white'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider font-bold text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md">
+              3+ Years
+            </span>
+            {selectedBracket === '3_plus_years' && (
+              <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            )}
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {counts['3_plus_years']}
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium">members</span>
+          </div>
+          <p className="text-xs font-medium text-purple-800 mt-1">Extended service</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">36+ months (Review recommended)</p>
+        </button>
 
       </div>
 
-      {/* Longest Serving Leaders Review Panel */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div>
-          <h3 className="font-bold text-sm text-slate-900 flex items-center space-x-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span>Long-Serving Members (&gt; 2 Years Service)</span>
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            The handbook suggests reviewing callings periodically. Members serving for over 2 years can be considered for release or reassignment.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {tenureBreakdown.longServingList.map(({ calling, tenure }) => (
-            <div key={calling.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">{calling.organization}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                    tenure.badgeColor === 'purple' ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {tenure.displayText}
-                  </span>
-                </div>
-                <h4 className="font-bold text-slate-900 text-xs mt-1">{calling.memberName}</h4>
-                <p className="text-xs text-slate-600">{calling.title}</p>
-                <p className="text-[10px] text-slate-400 mt-1">Sustained: {formatDateForDisplay(calling.sustainedDate)}</p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                <button
-                  onClick={() => onSelectCalling(calling)}
-                  className="text-xs text-blue-600 font-semibold hover:underline"
-                >
-                  Details
-                </button>
-                <button
-                  onClick={() => onProposeForCalling(calling)}
-                  className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-800 font-medium px-2.5 py-1 rounded transition-colors"
-                >
-                  Recommend Release
-                </button>
-              </div>
+      {/* Members Section for Selected Bracket */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        
+        {/* Section Header & Controls */}
+        <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <h3 className="text-sm font-bold text-slate-900">
+                {currentInfo.title}
+              </h3>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${currentInfo.badgeClass}`}>
+                {displayedItems.length} {displayedItems.length === 1 ? 'member' : 'members'}
+              </span>
             </div>
-          ))}
+            <p className="text-xs text-slate-500 mt-0.5">
+              {currentInfo.description}
+            </p>
+          </div>
+
+          {/* Search & Org Filter */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search Input */}
+            <div className="relative min-w-[200px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search member or calling..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Org Dropdown Filter */}
+            <div className="flex items-center space-x-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={selectedOrgFilter}
+                onChange={(e) => setSelectedOrgFilter(e.target.value)}
+                className="text-xs bg-transparent border-none focus:outline-none font-medium text-slate-700 cursor-pointer"
+              >
+                {organizationsList.map((org) => (
+                  <option key={org} value={org}>
+                    {org === 'All' ? 'All Organizations' : org}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
+
+        {/* Member Cards Grid */}
+        <div className="p-5">
+          {displayedItems.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {displayedItems.map(({ calling, tenure }) => {
+                // Determine tenure tag color
+                let tenureColor = 'bg-slate-100 text-slate-800 border-slate-200';
+                if (tenure.totalMonths >= 36) {
+                  tenureColor = 'bg-purple-100 text-purple-800 border-purple-200';
+                } else if (tenure.totalMonths >= 24) {
+                  tenureColor = 'bg-amber-100 text-amber-800 border-amber-200';
+                } else if (tenure.totalMonths >= 6) {
+                  tenureColor = 'bg-blue-100 text-blue-800 border-blue-200';
+                } else {
+                  tenureColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                }
+
+                return (
+                  <div
+                    key={calling.id}
+                    className="p-4 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-slate-300 hover:bg-white transition-all flex flex-col justify-between space-y-3 group shadow-2xs"
+                  >
+                    <div>
+                      {/* Top Org & Tenure Pill */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">
+                          {calling.organization}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${tenureColor}`}>
+                          {tenure.displayText}
+                        </span>
+                      </div>
+
+                      {/* Member Name & Calling Title */}
+                      <h4 className="font-bold text-slate-900 text-sm mt-2 group-hover:text-blue-700 transition-colors">
+                        {calling.memberName}
+                      </h4>
+                      <p className="text-xs text-slate-700 font-medium mt-0.5">
+                        {calling.title}
+                      </p>
+                      {calling.subOrg && (
+                        <p className="text-[11px] text-slate-500">
+                          {calling.subOrg}
+                        </p>
+                      )}
+
+                      {/* Sustained Date */}
+                      <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] text-slate-500">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Sustained: {formatDateForDisplay(calling.sustainedDate)}</span>
+                      </div>
+                    </div>
+
+                    {/* Bottom Actions */}
+                    <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onSelectCalling(calling)}
+                        className="text-xs font-semibold text-slate-600 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100 transition-colors"
+                      >
+                        View Details
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onProposeForCalling(calling)}
+                        className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg transition-colors flex items-center space-x-1 shadow-2xs"
+                      >
+                        <span>Propose</span>
+                        <ArrowUpRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 px-4">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
+                <Info className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900">No members found</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                {searchQuery || selectedOrgFilter !== 'All'
+                  ? 'No members in this tenure bracket match your search and filter criteria.'
+                  : `There are currently no active members in the ${currentInfo.title} service bracket.`}
+              </p>
+            </div>
+          )}
+        </div>
+
       </div>
 
     </div>

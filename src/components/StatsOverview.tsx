@@ -152,7 +152,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500">
-                Serving &gt; 2 Years
+                Serving 3+ Years
               </span>
               <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
                 <Clock className="w-4 h-4" />

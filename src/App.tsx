@@ -17,6 +17,16 @@ import {
   CandidateOption
 } from './types';
 import { INITIAL_CALLINGS, INITIAL_PROPOSALS, WARD_MEMBERS, BISHOPRIC_LEADERS } from './data/initialData';
+import { 
+  subscribeToCallings, 
+  subscribeToProposals, 
+  saveCallingToFirestore, 
+  deleteCallingFromFirestore, 
+  saveProposalToFirestore, 
+  deleteProposalFromFirestore, 
+  resetFirestoreToDefaults,
+  ensureDatabaseSeeded 
+} from './services/firestoreService';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
@@ -66,7 +76,10 @@ export default function App() {
   // Mobile Sidebar Drawer State
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Main Callings State
+  // Firestore Real-time Cloud Sync Status
+  const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'syncing' | 'error'>('connecting');
+
+  // Main Callings State (cached initially from localStorage or defaults, then synced via Firestore)
   const [callings, setCallings] = useState<Calling[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CALLINGS);
     if (saved) {
@@ -90,9 +103,49 @@ export default function App() {
   const [selectedCallingDetail, setSelectedCallingDetail] = useState<Calling | null>(null);
   const [isAddCustomModalOpen, setIsAddCustomModalOpen] = useState(false);
 
+  // 1. Setup Firestore Real-time Subscriptions & Cloud Sync
+  useEffect(() => {
+    setSyncStatus('connecting');
+
+    // Ensure database is populated with initial seed if empty
+    ensureDatabaseSeeded().catch((err) => {
+      console.warn('Seeding check warning:', err);
+    });
+
+    // Real-time listener for Callings collection
+    const unsubscribeCallings = subscribeToCallings(
+      (loadedCallings) => {
+        if (loadedCallings && loadedCallings.length > 0) {
+          setCallings(loadedCallings);
+        }
+        setSyncStatus('connected');
+      },
+      (error) => {
+        console.error('Callings subscription failed:', error);
+        setSyncStatus('error');
+      }
+    );
+
+    // Real-time listener for Proposals collection
+    const unsubscribeProposals = subscribeToProposals(
+      (loadedProposals) => {
+        setProposals(loadedProposals);
+        setSyncStatus('connected');
+      },
+      (error) => {
+        console.error('Proposals subscription failed:', error);
+        setSyncStatus('error');
+      }
+    );
+
+    return () => {
+      unsubscribeCallings();
+      unsubscribeProposals();
+    };
+  }, []);
+
   // Sync auth user to localStorage
   useEffect(() => {
-    // Clear old legacy cache versions
     localStorage.removeItem('masagana_2nd_ward_proposals_v1');
     localStorage.removeItem('masagana_2nd_ward_callings_v2');
     localStorage.removeItem('masagana_2nd_ward_proposals_v2');
@@ -103,7 +156,7 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Sync state to localStorage
+  // Sync state to localStorage cache
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CALLINGS, JSON.stringify(callings));
   }, [callings]);
@@ -145,7 +198,7 @@ export default function App() {
     const longTenureCount = callings.filter(c => {
       if (c.isVacant) return false;
       const tenure = calculateTenure(c.sustainedDate);
-      return tenure.totalMonths >= 24;
+      return tenure.totalMonths >= 36;
     }).length;
 
     return {
@@ -214,16 +267,27 @@ export default function App() {
     }
   };
 
-  const handleToggleSetApart = (callingId: string) => {
-    setCallings(prev => prev.map(c => {
-      if (c.id === callingId) {
-        return { ...c, setApart: !c.setApart };
-      }
-      return c;
-    }));
+  const handleToggleSetApart = async (callingId: string) => {
+    const target = callings.find(c => c.id === callingId);
+    if (!target) return;
+
+    const updatedCalling = { ...target, setApart: !target.setApart };
+
+    // Optimistic local update
+    setCallings(prev => prev.map(c => c.id === callingId ? updatedCalling : c));
 
     if (selectedCallingDetail && selectedCallingDetail.id === callingId) {
-      setSelectedCallingDetail(prev => prev ? { ...prev, setApart: !prev.setApart } : null);
+      setSelectedCallingDetail(updatedCalling);
+    }
+
+    // Persist to Cloud Firestore
+    setSyncStatus('syncing');
+    try {
+      await saveCallingToFirestore(updatedCalling);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync setApart status to Firestore:', e);
+      setSyncStatus('error');
     }
   };
 
@@ -233,135 +297,167 @@ export default function App() {
   };
 
   // 3-Point Approval Action
-  const handleUpdateApproval = (
+  const handleUpdateApproval = async (
     proposalId: string, 
     role: BishopricRole, 
     status: ApprovalStatus, 
     note?: string
   ) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
     const actorLeader = BISHOPRIC_LEADERS[role];
     const todayStr = '2026-07-26';
 
-    setProposals(prev => prev.map(prop => {
-      if (prop.id !== proposalId) return prop;
-
-      const updatedApprovals = {
-        ...prop.approvals,
-        [role]: {
-          status,
-          updatedAt: todayStr,
-          note: note || prop.approvals[role].note,
-        }
-      };
-
-      // Recalculate Final Status
-      const statuses = [
-        updatedApprovals.bishop.status,
-        updatedApprovals.first_counselor.status,
-        updatedApprovals.second_counselor.status,
-      ];
-
-      const approvedCount = statuses.filter(s => s === 'approved').length;
-      const rejectedCount = statuses.filter(s => s === 'rejected').length;
-
-      let newFinalStatus = prop.finalStatus;
-      if (rejectedCount > 0) {
-        newFinalStatus = 'declined';
-      } else if (approvedCount === 3) {
-        newFinalStatus = 'approved_for_action';
-      } else {
-        newFinalStatus = 'pending_review';
+    const updatedApprovals = {
+      ...prop.approvals,
+      [role]: {
+        status,
+        updatedAt: todayStr,
+        note: note || prop.approvals[role].note,
       }
+    };
 
-      const actionText = status === 'approved' ? 'Approved proposal' : 'Declined proposal';
-      const actorName = currentUser?.isSuperAdmin 
-        ? `${currentUser.name} (acting as ${actorLeader.title})`
-        : currentUser?.name || actorLeader.name;
+    // Recalculate Final Status
+    const statuses = [
+      updatedApprovals.bishop.status,
+      updatedApprovals.first_counselor.status,
+      updatedApprovals.second_counselor.status,
+    ];
 
-      return {
-        ...prop,
-        approvals: updatedApprovals,
-        finalStatus: newFinalStatus,
-        statusHistory: [
-          ...prop.statusHistory,
-          {
-            date: todayStr,
-            action: `${actionText} as ${actorLeader.title}`,
-            actor: actorName,
-            note: note || undefined,
-          }
-        ]
-      };
-    }));
+    const approvedCount = statuses.filter(s => s === 'approved').length;
+    const rejectedCount = statuses.filter(s => s === 'rejected').length;
+
+    let newFinalStatus = prop.finalStatus;
+    if (rejectedCount > 0) {
+      newFinalStatus = 'declined';
+    } else if (approvedCount === 3) {
+      newFinalStatus = 'approved_for_action';
+    } else {
+      newFinalStatus = 'pending_review';
+    }
+
+    const actionText = status === 'approved' ? 'Approved proposal' : 'Declined proposal';
+    const actorName = currentUser?.isSuperAdmin 
+      ? `${currentUser.name} (acting as ${actorLeader.title})`
+      : currentUser?.name || actorLeader.name;
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      approvals: updatedApprovals,
+      finalStatus: newFinalStatus,
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: `${actionText} as ${actorLeader.title}`,
+          actor: actorName,
+          note: note || undefined,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync proposal approval to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Super Admin Instant 3-Point Approval
-  const handleSuperAdminApproveAll = (proposalId: string) => {
+  const handleSuperAdminApproveAll = async (proposalId: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
     const todayStr = '2026-07-26';
 
-    setProposals(prev => prev.map(prop => {
-      if (prop.id !== proposalId) return prop;
+    const updatedApprovals = {
+      bishop: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
+      first_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
+      second_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
+    };
 
-      const updatedApprovals = {
-        bishop: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
-        first_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
-        second_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
-      };
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      approvals: updatedApprovals,
+      finalStatus: 'approved_for_action',
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: 'Super Admin Unanimous 3-Point Approval',
+          actor: 'Super Admin',
+          note: 'All 3 sign-offs authorized by Super Admin',
+        }
+      ]
+    };
 
-      return {
-        ...prop,
-        approvals: updatedApprovals,
-        finalStatus: 'approved_for_action',
-        statusHistory: [
-          ...prop.statusHistory,
-          {
-            date: todayStr,
-            action: 'Super Admin Unanimous 3-Point Approval',
-            actor: 'Super Admin',
-            note: 'All 3 sign-offs authorized by Super Admin',
-          }
-        ]
-      };
-    }));
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync superadmin approval to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Select a Candidate from Proposal Discussion Pool
-  const handleSelectCandidate = (proposalId: string, candidateId: string) => {
+  const handleSelectCandidate = async (proposalId: string, candidateId: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const candidate = prop.candidates?.find(c => c.id === candidateId);
+    if (!candidate) return;
+
     const todayStr = '2026-07-26';
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
-    setProposals(prev => prev.map(p => {
-      if (p.id === proposalId) {
-        const candidate = p.candidates?.find(c => c.id === candidateId);
-        if (!candidate) return p;
-
-        const updatedCandidates = (p.candidates || []).map(c => ({
-          ...c,
-          isSelected: c.id === candidateId
-        }));
-
-        return {
-          ...p,
-          proposedMemberName: candidate.name,
-          selectedCandidateId: candidate.id,
-          candidates: updatedCandidates,
-          statusHistory: [
-            ...p.statusHistory,
-            {
-              date: todayStr,
-              action: `Selected candidate for recommendation: ${candidate.name}`,
-              actor: actorName,
-              note: candidate.note ? `Candidate note: ${candidate.note}` : undefined,
-            }
-          ]
-        };
-      }
-      return p;
+    const updatedCandidates = (prop.candidates || []).map(c => ({
+      ...c,
+      isSelected: c.id === candidateId
     }));
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      proposedMemberName: candidate.name,
+      selectedCandidateId: candidate.id,
+      candidates: updatedCandidates,
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: `Selected candidate for recommendation: ${candidate.name}`,
+          actor: actorName,
+          note: candidate.note ? `Candidate note: ${candidate.note}` : undefined,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync candidate selection to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Add an Alternative Candidate to Proposal Discussion Pool
-  const handleAddCandidateToProposal = (proposalId: string, candidateName: string, note?: string) => {
+  const handleAddCandidateToProposal = async (proposalId: string, candidateName: string, note?: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
     const todayStr = '2026-07-26';
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
@@ -374,171 +470,204 @@ export default function App() {
       isSelected: false,
     };
 
-    setProposals(prev => prev.map(p => {
-      if (p.id === proposalId) {
-        const existingCandidates = p.candidates || [];
-        const shouldAutoSelect = existingCandidates.length === 0 || p.proposedMemberName.toLowerCase().includes('to be discussed');
+    const existingCandidates = prop.candidates || [];
+    const shouldAutoSelect = existingCandidates.length === 0 || prop.proposedMemberName.toLowerCase().includes('to be discussed');
 
-        const updatedCandidates = [
-          ...existingCandidates.map(c => shouldAutoSelect ? { ...c, isSelected: false } : c),
-          { ...newCandidate, isSelected: shouldAutoSelect }
-        ];
+    const updatedCandidates = [
+      ...existingCandidates.map(c => shouldAutoSelect ? { ...c, isSelected: false } : c),
+      { ...newCandidate, isSelected: shouldAutoSelect }
+    ];
 
-        return {
-          ...p,
-          proposedMemberName: shouldAutoSelect ? newCandidate.name : p.proposedMemberName,
-          selectedCandidateId: shouldAutoSelect ? newCandidate.id : p.selectedCandidateId,
-          candidates: updatedCandidates,
-          statusHistory: [
-            ...p.statusHistory,
-            {
-              date: todayStr,
-              action: `Added alternative candidate to pool: ${newCandidate.name}`,
-              actor: actorName,
-              note: note ? `Reason: ${note}` : undefined,
-            }
-          ]
-        };
-      }
-      return p;
-    }));
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      proposedMemberName: shouldAutoSelect ? newCandidate.name : prop.proposedMemberName,
+      selectedCandidateId: shouldAutoSelect ? newCandidate.id : prop.selectedCandidateId,
+      candidates: updatedCandidates,
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: `Added alternative candidate to pool: ${newCandidate.name}`,
+          actor: actorName,
+          note: note ? `Reason: ${note}` : undefined,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync added candidate to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Remove a Candidate from Proposal Discussion Pool
-  const handleRemoveCandidateFromProposal = (proposalId: string, candidateId: string) => {
+  const handleRemoveCandidateFromProposal = async (proposalId: string, candidateId: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop || !prop.candidates) return;
+
     const todayStr = '2026-07-26';
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
-    setProposals(prev => prev.map(p => {
-      if (p.id === proposalId && p.candidates) {
-        const removed = p.candidates.find(c => c.id === candidateId);
-        const filtered = p.candidates.filter(c => c.id !== candidateId);
-        
-        let newSelectedId = p.selectedCandidateId;
-        let newProposedName = p.proposedMemberName;
+    const removed = prop.candidates.find(c => c.id === candidateId);
+    const filtered = prop.candidates.filter(c => c.id !== candidateId);
+    
+    let newSelectedId = prop.selectedCandidateId;
+    let newProposedName = prop.proposedMemberName;
 
-        if (p.selectedCandidateId === candidateId) {
-          if (filtered.length > 0) {
-            newSelectedId = filtered[0].id;
-            newProposedName = filtered[0].name;
-            filtered[0].isSelected = true;
-          } else {
-            newSelectedId = undefined;
-            newProposedName = 'To be discussed';
-          }
-        }
-
-        return {
-          ...p,
-          candidates: filtered,
-          selectedCandidateId: newSelectedId,
-          proposedMemberName: newProposedName,
-          statusHistory: [
-            ...p.statusHistory,
-            {
-              date: todayStr,
-              action: `Removed candidate from pool: ${removed?.name || candidateId}`,
-              actor: actorName,
-            }
-          ]
-        };
+    if (prop.selectedCandidateId === candidateId) {
+      if (filtered.length > 0) {
+        newSelectedId = filtered[0].id;
+        newProposedName = filtered[0].name;
+        filtered[0].isSelected = true;
+      } else {
+        newSelectedId = undefined;
+        newProposedName = 'To be discussed';
       }
-      return p;
-    }));
+    }
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      candidates: filtered,
+      selectedCandidateId: newSelectedId,
+      proposedMemberName: newProposedName,
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: `Removed candidate from pool: ${removed?.name || candidateId}`,
+          actor: actorName,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync candidate removal to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Update Candidate Name on an existing proposal
-  const handleUpdateProposalCandidate = (proposalId: string, candidateName: string) => {
+  const handleUpdateProposalCandidate = async (proposalId: string, candidateName: string) => {
     if (!candidateName.trim()) {
       alert('Please enter a candidate name.');
       return;
     }
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
     const todayStr = '2026-07-26';
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
-    setProposals(prev => prev.map(p => {
-      if (p.id === proposalId) {
-        const newCandId = `cand-${Date.now()}`;
-        const newCand: CandidateOption = {
-          id: newCandId,
-          name: candidateName.trim(),
-          addedBy: actorName,
-          dateAdded: todayStr,
-          isSelected: true
-        };
+    const newCandId = `cand-${Date.now()}`;
+    const newCand: CandidateOption = {
+      id: newCandId,
+      name: candidateName.trim(),
+      addedBy: actorName,
+      dateAdded: todayStr,
+      isSelected: true
+    };
 
-        const existing = p.candidates || [];
-        const updatedCandidates = [
-          ...existing.map(c => ({ ...c, isSelected: false })),
-          newCand
-        ];
+    const existing = prop.candidates || [];
+    const updatedCandidates = [
+      ...existing.map(c => ({ ...c, isSelected: false })),
+      newCand
+    ];
 
-        return {
-          ...p,
-          proposedMemberName: candidateName.trim(),
-          selectedCandidateId: newCandId,
-          candidates: updatedCandidates,
-          statusHistory: [
-            ...p.statusHistory,
-            {
-              date: todayStr,
-              action: `Proposed candidate name: ${candidateName.trim()}`,
-              actor: actorName,
-            }
-          ]
-        };
-      }
-      return p;
-    }));
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      proposedMemberName: candidateName.trim(),
+      selectedCandidateId: newCandId,
+      candidates: updatedCandidates,
+      statusHistory: [
+        ...prop.statusHistory,
+        {
+          date: todayStr,
+          action: `Proposed candidate name: ${candidateName.trim()}`,
+          actor: actorName,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync candidate update to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Mark Sustained & Update Main Calling Record
-  const handleSustainCalling = (proposal: CallingProposal) => {
+  const handleSustainCalling = async (proposal: CallingProposal) => {
     if (proposal.proposedMemberName.toLowerCase().includes('to be discussed') || !proposal.proposedMemberName.trim()) {
       alert('Please propose and assign a specific candidate name before marking as sustained.');
       return;
     }
 
     const todayStr = '26 Jul 2026';
+    const targetCalling = callings.find(c => c.id === proposal.callingId);
+    if (!targetCalling) return;
 
-    // 1. Update Calling Position
-    setCallings(prev => prev.map(c => {
-      if (c.id === proposal.callingId) {
-        return {
-          ...c,
-          memberName: proposal.proposedMemberName,
-          sustainedDate: todayStr,
-          setApart: false, // Needs setting apart after sustaining
-          isVacant: false,
-        };
-      }
-      return c;
-    }));
+    // 1. Updated Calling Position
+    const updatedCalling: Calling = {
+      ...targetCalling,
+      memberName: proposal.proposedMemberName,
+      sustainedDate: todayStr,
+      setApart: false, // Needs setting apart after sustaining
+      isVacant: false,
+    };
 
-    // 2. Update Proposal Status
-    setProposals(prev => prev.map(p => {
-      if (p.id === proposal.id) {
-        return {
-          ...p,
-          finalStatus: 'sustained',
-          statusHistory: [
-            ...p.statusHistory,
-            {
-              date: '2026-07-26',
-              action: 'Calling sustained in Ward Meeting',
-              actor: currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name,
-            }
-          ]
-        };
-      }
-      return p;
-    }));
+    // 2. Updated Proposal Status
+    const updatedProposal: CallingProposal = {
+      ...proposal,
+      finalStatus: 'sustained',
+      statusHistory: [
+        ...proposal.statusHistory,
+        {
+          date: '2026-07-26',
+          action: 'Calling sustained in Ward Meeting',
+          actor: currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name,
+        }
+      ]
+    };
+
+    // Update local state
+    setCallings(prev => prev.map(c => c.id === proposal.callingId ? updatedCalling : c));
+    setProposals(prev => prev.map(p => p.id === proposal.id ? updatedProposal : p));
+
+    // Save to Firestore
+    setSyncStatus('syncing');
+    try {
+      await Promise.all([
+        saveCallingToFirestore(updatedCalling),
+        saveProposalToFirestore(updatedProposal)
+      ]);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync sustained status to Firestore:', e);
+      setSyncStatus('error');
+    }
 
     alert(`Successfully recorded: ${proposal.proposedMemberName} sustained as ${proposal.callingTitle}!`);
   };
 
   // Create New Calling Proposal
-  const handleCreateProposal = (data: {
+  const handleCreateProposal = async (data: {
     callingId: string;
     callingTitle: string;
     organization: string;
@@ -589,10 +718,19 @@ export default function App() {
 
     setProposals(prev => [newProposal, ...prev]);
     setActiveTab('needs_approval');
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(newProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync new proposal to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Add Custom Calling Position
-  const handleAddCustomCalling = (data: {
+  const handleAddCustomCalling = async (data: {
     organization: string;
     subOrg: string;
     title: string;
@@ -614,19 +752,29 @@ export default function App() {
     };
 
     setCallings(prev => [newCalling, ...prev]);
-    // Switch to that organization so the user immediately sees it
     setSelectedOrg(data.organization);
     setActiveTab('org_chart');
+
+    setSyncStatus('syncing');
+    try {
+      await saveCallingToFirestore(newCalling);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync custom calling to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
   // Delete Vacant Calling Position
-  const handleDeleteCalling = (callingId: string, callingTitle?: string) => {
+  const handleDeleteCalling = async (callingId: string, callingTitle?: string) => {
     const target = callings.find(c => c.id === callingId);
     const title = callingTitle || target?.title || 'this position';
 
     if (!confirm(`Are you sure you want to delete the vacant position "${title}"? This will remove it from the organization directory.`)) {
       return;
     }
+
+    const relatedProposals = proposals.filter(p => p.callingId === callingId);
 
     // 1. Remove from callings list
     setCallings(prev => prev.filter(c => c.id !== callingId));
@@ -638,15 +786,35 @@ export default function App() {
     if (selectedCallingDetail && selectedCallingDetail.id === callingId) {
       setSelectedCallingDetail(null);
     }
+
+    setSyncStatus('syncing');
+    try {
+      await deleteCallingFromFirestore(callingId);
+      await Promise.all(relatedProposals.map(p => deleteProposalFromFirestore(p.id)));
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync calling deletion to Firestore:', e);
+      setSyncStatus('error');
+    }
   };
 
-  // Reset Data to Original Default
-  const handleResetData = () => {
-    if (confirm('Are you sure you want to reset all calling approvals and restoration data to the ward default report?')) {
-      setCallings(INITIAL_CALLINGS);
-      setProposals(INITIAL_PROPOSALS);
-      localStorage.removeItem(STORAGE_KEYS.CALLINGS);
-      localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
+  // Reset Data to Original Default in Cloud Firestore
+  const handleResetData = async () => {
+    if (confirm('Are you sure you want to reset all calling approvals and restoration data to the ward default report in cloud Firestore?')) {
+      setSyncStatus('syncing');
+      try {
+        await resetFirestoreToDefaults();
+        setCallings(INITIAL_CALLINGS);
+        setProposals(INITIAL_PROPOSALS);
+        localStorage.removeItem(STORAGE_KEYS.CALLINGS);
+        localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
+        setSyncStatus('connected');
+        alert('Ward database successfully reset and synced to cloud Firestore defaults.');
+      } catch (e) {
+        console.error('Failed to reset Firestore to defaults:', e);
+        setSyncStatus('error');
+        alert('Failed to reset cloud database. Please verify your connection.');
+      }
     }
   };
 
@@ -662,12 +830,13 @@ export default function App() {
       <Navbar
         isMobileSidebarOpen={isMobileSidebarOpen}
         onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+        syncStatus={syncStatus}
       />
 
       {/* Main Body Layout with Sticky Sidebar + Main View */}
       <div className="flex-1 flex flex-col lg:flex-row w-full max-w-[1600px] mx-auto min-h-screen">
         
-        {/* Left Side Navigation (Sticky, with brand logo on top and account at bottom) */}
+        {/* Left Side Navigation (Sticky, with brand logo on top, sync status, and account at bottom) */}
         <Sidebar
           currentUser={currentUser}
           activeTab={activeTab}
@@ -676,6 +845,7 @@ export default function App() {
           onSelectOrg={setSelectedOrg}
           metrics={metrics}
           callingCountByOrg={callingCountByOrg}
+          syncStatus={syncStatus}
           onResetData={handleResetData}
           onLogout={handleLogout}
           isMobileOpen={isMobileSidebarOpen}
@@ -764,7 +934,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500">
         <p>
-          Masagana 2nd Ward (298506) • Antipolo Philippines Stake (527467) • Calling Approvals System
+          Masagana 2nd Ward (298506) • Antipolo Philippines Stake (527467) • Calling Approvals System • Cloud Firestore Synced
         </p>
       </footer>
 

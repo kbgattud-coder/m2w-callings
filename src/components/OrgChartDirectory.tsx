@@ -77,7 +77,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
       if (filterStatus === 'long_tenure') {
         if (c.isVacant) return false;
         const tenure = calculateTenure(c.sustainedDate);
-        if (tenure.totalMonths < 24) return false;
+        if (tenure.totalMonths < 36) return false;
       }
 
       if (filterStatus === 'has_proposal') {
@@ -145,7 +145,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
               <option value="vacant">Vacant Positions</option>
               <option value="filled">Filled Positions</option>
               <option value="needs_set_apart">Needs Setting Apart</option>
-              <option value="long_tenure">Serving &gt; 2 Years</option>
+              <option value="long_tenure">Serving 3+ Years</option>
               <option value="has_proposal">Pending Proposal</option>
             </select>
           </div>
