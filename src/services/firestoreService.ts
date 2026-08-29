@@ -158,7 +158,30 @@ export function subscribeToProposals(
     (snapshot) => {
       const loadedProposals: CallingProposal[] = [];
       snapshot.forEach((docSnap) => {
-        loadedProposals.push({ ...docSnap.data(), id: docSnap.id } as CallingProposal);
+        const raw = docSnap.data() as Partial<CallingProposal>;
+        const sanitized: CallingProposal = {
+          id: docSnap.id,
+          callingId: raw.callingId || '',
+          callingTitle: raw.callingTitle || 'Calling',
+          organization: raw.organization || 'Other Callings',
+          subOrg: raw.subOrg || '',
+          type: raw.type || 'fill_vacancy',
+          currentMemberName: raw.currentMemberName || null,
+          proposedMemberName: raw.proposedMemberName || '',
+          candidates: raw.candidates || [],
+          selectedCandidateId: raw.selectedCandidateId,
+          proposedByName: raw.proposedByName || 'Leader',
+          reasonNote: raw.reasonNote || '',
+          dateProposed: raw.dateProposed || '2026-07-26',
+          approvals: {
+            bishop: { status: raw.approvals?.bishop?.status || 'pending', ...(raw.approvals?.bishop || {}) },
+            first_counselor: { status: raw.approvals?.first_counselor?.status || 'pending', ...(raw.approvals?.first_counselor || {}) },
+            second_counselor: { status: raw.approvals?.second_counselor?.status || 'pending', ...(raw.approvals?.second_counselor || {}) },
+          },
+          finalStatus: raw.finalStatus || 'pending_review',
+          statusHistory: raw.statusHistory || [],
+        };
+        loadedProposals.push(sanitized);
       });
       onUpdate(loadedProposals);
     },
@@ -238,6 +261,56 @@ export async function deleteProposalFromFirestore(proposalId: string): Promise<v
     await deleteDoc(proposalRef);
   } catch (error) {
     console.error('Error deleting proposal from Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear action logs for all proposals in Firestore
+ */
+export async function clearAllProposalsHistory(): Promise<void> {
+  try {
+    const proposalsSnap = await getDocs(collection(db, PROPOSALS_COLLECTION));
+    if (proposalsSnap.empty) return;
+
+    const chunkSize = 400;
+    const docs = proposalsSnap.docs;
+    for (let i = 0; i < docs.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const chunk = docs.slice(i, i + chunkSize);
+      for (const docSnap of chunk) {
+        batch.update(docSnap.ref, {
+          statusHistory: [],
+          'approvals.bishop.note': '',
+          'approvals.first_counselor.note': '',
+          'approvals.second_counselor.note': '',
+        });
+      }
+      await batch.commit();
+    }
+    console.log('Successfully cleared discussion and action logs for all proposals.');
+  } catch (error) {
+    console.error('Error clearing all proposal logs in Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear action logs for a single proposal in Firestore
+ */
+export async function clearProposalHistory(proposalId: string): Promise<void> {
+  try {
+    const proposalRef = doc(db, PROPOSALS_COLLECTION, proposalId);
+    await setDoc(proposalRef, {
+      statusHistory: [],
+      approvals: {
+        bishop: { note: '' },
+        first_counselor: { note: '' },
+        second_counselor: { note: '' }
+      }
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error clearing proposal history in Firestore:', error);
     throw error;
   }
 }

@@ -25,7 +25,9 @@ import {
   saveProposalToFirestore, 
   deleteProposalFromFirestore, 
   resetFirestoreToDefaults,
-  ensureDatabaseSeeded 
+  ensureDatabaseSeeded,
+  clearAllProposalsHistory,
+  clearProposalHistory
 } from './services/firestoreService';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -40,6 +42,7 @@ import { ProposalModal } from './components/ProposalModal';
 import { CallingDetailModal } from './components/CallingDetailModal';
 import { AddCustomCallingModal } from './components/AddCustomCallingModal';
 import { calculateTenure } from './utils/tenure';
+import { sortCallings } from './utils/callingSort';
 
 const STORAGE_KEYS = {
   AUTH_USER: 'masagana_2nd_ward_auth_user_v1',
@@ -60,6 +63,17 @@ export default function App() {
 
   // Active Leader Role in 3-Point System
   const [activeRole, setActiveRole] = useState<BishopricRole>(() => {
+    const savedUserStr = localStorage.getItem(STORAGE_KEYS.AUTH_USER);
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed?.role && ['bishop', 'first_counselor', 'second_counselor', 'executive_secretary'].includes(parsed.role)) {
+          return parsed.role as BishopricRole;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
     const saved = localStorage.getItem(STORAGE_KEYS.ROLE);
     if (saved && (saved === 'bishop' || saved === 'first_counselor' || saved === 'second_counselor' || saved === 'executive_secretary')) {
       return saved as BishopricRole;
@@ -83,9 +97,9 @@ export default function App() {
   const [callings, setCallings] = useState<Calling[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CALLINGS);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try { return sortCallings(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
-    return INITIAL_CALLINGS;
+    return sortCallings(INITIAL_CALLINGS);
   });
 
   // Calling Proposals State
@@ -116,7 +130,7 @@ export default function App() {
     const unsubscribeCallings = subscribeToCallings(
       (loadedCallings) => {
         if (loadedCallings && loadedCallings.length > 0) {
-          setCallings(loadedCallings);
+          setCallings(sortCallings(loadedCallings));
         }
         setSyncStatus('connected');
       },
@@ -131,6 +145,12 @@ export default function App() {
       (loadedProposals) => {
         setProposals(loadedProposals);
         setSyncStatus('connected');
+
+        // If any proposals contain old discussion logs, auto-clear them once to clean up
+        const hasLogs = loadedProposals.some(p => p.statusHistory && p.statusHistory.length > 0);
+        if (hasLogs) {
+          clearAllProposalsHistory().catch(err => console.warn('Auto clear logs err:', err));
+        }
       },
       (error) => {
         console.error('Proposals subscription failed:', error);
@@ -306,17 +326,28 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
-    const actorLeader = BISHOPRIC_LEADERS[role];
+    const actorLeader = BISHOPRIC_LEADERS[role] || { title: 'Leader', name: 'Leader', shortName: 'Leader' };
     const todayStr = '2026-07-26';
 
+    const currentApprovals = prop.approvals || {
+      bishop: { status: 'pending' },
+      first_counselor: { status: 'pending' },
+      second_counselor: { status: 'pending' },
+    };
+
     const updatedApprovals = {
-      ...prop.approvals,
-      [role]: {
+      bishop: { status: currentApprovals.bishop?.status || 'pending', ...(currentApprovals.bishop || {}) },
+      first_counselor: { status: currentApprovals.first_counselor?.status || 'pending', ...(currentApprovals.first_counselor || {}) },
+      second_counselor: { status: currentApprovals.second_counselor?.status || 'pending', ...(currentApprovals.second_counselor || {}) },
+    };
+
+    if (role === 'bishop' || role === 'first_counselor' || role === 'second_counselor') {
+      updatedApprovals[role] = {
         status,
         updatedAt: todayStr,
-        note: note || prop.approvals[role].note,
-      }
-    };
+        note: note !== undefined ? note : (currentApprovals[role]?.note || ''),
+      };
+    }
 
     // Recalculate Final Status
     const statuses = [
@@ -337,17 +368,17 @@ export default function App() {
       newFinalStatus = 'pending_review';
     }
 
-    const actionText = status === 'approved' ? 'Approved proposal' : 'Declined proposal';
+    const actionText = status === 'approved' ? 'Approved proposal' : status === 'rejected' ? 'Declined proposal' : 'Reset approval';
     const actorName = currentUser?.isSuperAdmin 
       ? `${currentUser.name} (acting as ${actorLeader.title})`
-      : currentUser?.name || actorLeader.name;
+      : currentUser?.name ? `${currentUser.name} (${currentUser.calling})` : actorLeader.name;
 
     const updatedProposal: CallingProposal = {
       ...prop,
       approvals: updatedApprovals,
       finalStatus: newFinalStatus,
       statusHistory: [
-        ...prop.statusHistory,
+        ...(prop.statusHistory || []),
         {
           date: todayStr,
           action: `${actionText} as ${actorLeader.title}`,
@@ -365,6 +396,93 @@ export default function App() {
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to sync proposal approval to Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Super Admin / Bishopric Reset Proposal for Discussion (Re-open declined or existing proposals)
+  const handleResetProposal = async (proposalId: string, reason?: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayStr = '2026-07-26';
+    const actorName = currentUser 
+      ? (currentUser.isSuperAdmin ? `${currentUser.name} (Super Admin)` : `${currentUser.name} (${currentUser.calling})`)
+      : 'Super Admin';
+
+    const resetApprovals = {
+      bishop: { status: 'pending' as ApprovalStatus, updatedAt: todayStr, note: '' },
+      first_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayStr, note: '' },
+      second_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayStr, note: '' },
+    };
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      approvals: resetApprovals,
+      finalStatus: 'pending_review',
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayStr,
+          action: 'Reset proposal for discussion (Re-opened)',
+          actor: actorName,
+          note: reason || 'Re-opened proposal for bishopric review',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync proposal reset to Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Clear all discussion & action logs across all proposals
+  const handleClearAllLogs = async () => {
+    setProposals(prev => prev.map(p => ({
+      ...p,
+      statusHistory: [],
+      approvals: {
+        bishop: { ...p.approvals.bishop, note: '' },
+        first_counselor: { ...p.approvals.first_counselor, note: '' },
+        second_counselor: { ...p.approvals.second_counselor, note: '' },
+      }
+    })));
+
+    setSyncStatus('syncing');
+    try {
+      await clearAllProposalsHistory();
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to clear all proposal logs:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Clear log for a single proposal
+  const handleClearProposalHistory = async (proposalId: string) => {
+    setProposals(prev => prev.map(p => p.id === proposalId ? {
+      ...p,
+      statusHistory: [],
+      approvals: {
+        bishop: { ...p.approvals.bishop, note: '' },
+        first_counselor: { ...p.approvals.first_counselor, note: '' },
+        second_counselor: { ...p.approvals.second_counselor, note: '' },
+      }
+    } : p));
+
+    setSyncStatus('syncing');
+    try {
+      await clearProposalHistory(proposalId);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to clear proposal history in Firestore:', e);
       setSyncStatus('error');
     }
   };
@@ -647,7 +765,7 @@ export default function App() {
     };
 
     // Update local state
-    setCallings(prev => prev.map(c => c.id === proposal.callingId ? updatedCalling : c));
+    setCallings(prev => sortCallings(prev.map(c => c.id === proposal.callingId ? updatedCalling : c)));
     setProposals(prev => prev.map(p => p.id === proposal.id ? updatedProposal : p));
 
     // Save to Firestore
@@ -751,7 +869,7 @@ export default function App() {
       isCustom: true,
     };
 
-    setCallings(prev => [newCalling, ...prev]);
+    setCallings(prev => sortCallings([newCalling, ...prev]));
     setSelectedOrg(data.organization);
     setActiveTab('org_chart');
 
@@ -830,7 +948,7 @@ export default function App() {
       setSyncStatus('syncing');
       try {
         await resetFirestoreToDefaults();
-        setCallings(INITIAL_CALLINGS);
+        setCallings(sortCallings(INITIAL_CALLINGS));
         setProposals(INITIAL_PROPOSALS);
         localStorage.removeItem(STORAGE_KEYS.CALLINGS);
         localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
@@ -914,7 +1032,11 @@ export default function App() {
               proposals={proposals}
               allCallings={callings}
               activeRole={activeRole}
+              onRoleChange={setActiveRole}
               onUpdateApproval={handleUpdateApproval}
+              onResetProposal={handleResetProposal}
+              onClearAllLogs={handleClearAllLogs}
+              onClearProposalHistory={handleClearProposalHistory}
               onUpdateProposalCandidate={handleUpdateProposalCandidate}
               onSelectCandidate={handleSelectCandidate}
               onAddCandidateToProposal={handleAddCandidateToProposal}
@@ -980,11 +1102,13 @@ export default function App() {
       <CallingDetailModal
         calling={selectedCallingDetail}
         proposals={proposals}
+        currentUser={currentUser}
         onClose={() => setSelectedCallingDetail(null)}
         onProposeForCalling={handleOpenProposeForCalling}
         onToggleSetApart={handleToggleSetApart}
         onDeleteCalling={handleDeleteCalling}
         onDeleteProposal={handleDeleteProposal}
+        onResetProposal={handleResetProposal}
       />
 
       <AddCustomCallingModal

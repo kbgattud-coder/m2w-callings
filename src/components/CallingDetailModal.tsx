@@ -6,21 +6,25 @@ import { X, UserCheck, UserX, Clock, Calendar, CheckCircle2, AlertCircle, FileCh
 interface CallingDetailModalProps {
   calling: Calling | null;
   proposals: CallingProposal[];
+  currentUser?: { isSuperAdmin?: boolean };
   onClose: () => void;
   onProposeForCalling: (calling: Calling) => void;
   onToggleSetApart: (callingId: string) => void;
   onDeleteCalling?: (callingId: string, callingTitle: string) => void;
   onDeleteProposal?: (proposalId: string, callingTitle?: string) => void;
+  onResetProposal?: (proposalId: string, reason?: string) => void;
 }
 
 export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
   calling,
   proposals,
+  currentUser,
   onClose,
   onProposeForCalling,
   onToggleSetApart,
   onDeleteCalling,
   onDeleteProposal,
+  onResetProposal,
 }) => {
   if (!calling) return null;
 
@@ -116,9 +120,26 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
                     <div className="flex items-center justify-between font-bold text-slate-800">
                       <span>Proposed: {p.proposedMemberName}</span>
                       <div className="flex items-center space-x-1.5">
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                          {p.finalStatus.replace('_', ' ')}
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${
+                          p.finalStatus === 'declined' 
+                            ? 'bg-rose-100 text-rose-800' 
+                            : p.finalStatus === 'approved_for_action'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {p.finalStatus.replace(/_/g, ' ')}
                         </span>
+                        {p.finalStatus === 'declined' && onResetProposal && currentUser?.isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => onResetProposal(p.id, 'Re-opened via Calling Details')}
+                            className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors text-[10px] font-semibold flex items-center space-x-0.5 border border-amber-200"
+                            title="Reset declined proposal for discussion"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Reset</span>
+                          </button>
+                        )}
                         {onDeleteProposal && (
                           <button
                             type="button"

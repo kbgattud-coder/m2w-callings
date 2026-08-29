@@ -5,15 +5,11 @@ import {
   CheckCircle2, 
   Clock, 
   XCircle, 
-  ShieldCheck, 
-  ArrowRight, 
-  MessageSquare, 
   CheckCheck, 
   Calendar,
   Zap,
   FileCheck2,
   HelpCircle,
-  Edit2,
   UserPlus,
   UserCheck,
   Check,
@@ -23,7 +19,9 @@ import {
   AlertCircle,
   History,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ShieldCheck,
+  RotateCcw
 } from 'lucide-react';
 
 interface ApprovalsQueueProps {
@@ -31,7 +29,11 @@ interface ApprovalsQueueProps {
   proposals: CallingProposal[];
   allCallings: Calling[];
   activeRole: BishopricRole;
+  onRoleChange?: (role: BishopricRole) => void;
   onUpdateApproval: (proposalId: string, role: BishopricRole, status: ApprovalStatus, note?: string) => void;
+  onResetProposal?: (proposalId: string, reason?: string) => void;
+  onClearAllLogs?: () => void;
+  onClearProposalHistory?: (proposalId: string) => void;
   onUpdateProposalCandidate?: (proposalId: string, candidateName: string) => void;
   onSelectCandidate?: (proposalId: string, candidateId: string) => void;
   onAddCandidateToProposal?: (proposalId: string, candidateName: string, note?: string) => void;
@@ -46,7 +48,11 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   proposals,
   allCallings,
   activeRole,
+  onRoleChange,
   onUpdateApproval,
+  onResetProposal,
+  onClearAllLogs,
+  onClearProposalHistory,
   onUpdateProposalCandidate,
   onSelectCandidate,
   onAddCandidateToProposal,
@@ -62,7 +68,14 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   const [showAddCandidateMap, setShowAddCandidateMap] = useState<Record<string, boolean>>({});
   const [showHistoryMap, setShowHistoryMap] = useState<Record<string, boolean>>({});
 
-  const currentLeader = BISHOPRIC_LEADERS[activeRole];
+  // Determine effective signing role for current user
+  const effectiveSigningRole: BishopricRole = currentUser.isSuperAdmin 
+    ? activeRole 
+    : (['bishop', 'first_counselor', 'second_counselor', 'executive_secretary'].includes(currentUser.role)
+        ? (currentUser.role as BishopricRole)
+        : 'bishop');
+
+  const currentLeader = BISHOPRIC_LEADERS[effectiveSigningRole] || BISHOPRIC_LEADERS.bishop;
 
   // Group proposals by status
   const pendingProposals = proposals.filter(p => p.finalStatus === 'pending_review');
@@ -77,14 +90,14 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
     setNoteInputMap(prev => ({ ...prev, [proposalId]: text }));
   };
 
-  const handleAction = (proposalId: string, status: ApprovalStatus) => {
-    if (activeRole === 'executive_secretary' && !currentUser.isSuperAdmin) {
-      alert('Executive Secretary is in View-Only mode for sign-offs.');
+  const handleActionForRole = (proposalId: string, roleToUpdate: BishopricRole, status: ApprovalStatus) => {
+    if (roleToUpdate === 'executive_secretary' && !currentUser.isSuperAdmin) {
+      alert('Executive Secretary is in View-Only mode for bishopric sign-offs.');
       return;
     }
 
     const note = noteInputMap[proposalId] || '';
-    onUpdateApproval(proposalId, activeRole, status, note);
+    onUpdateApproval(proposalId, roleToUpdate, status, note);
     setNoteInputMap(prev => ({ ...prev, [proposalId]: '' }));
   };
 
@@ -120,7 +133,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
       <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <FileCheck2 className="w-4 h-4" />
             </div>
             <h2 className="text-base font-bold text-slate-900 tracking-tight">Calling Approvals & Discussions</h2>
@@ -129,64 +142,110 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
             Review candidate pools, discuss options in Bishopric meeting, establish consensus, and record 3-point approvals.
           </p>
         </div>
+
+        {/* Current User Role Badge / Super Admin Switcher */}
+        <div className="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200/80 shrink-0">
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">Logged In As</span>
+            <span className="text-xs font-bold text-slate-800 block leading-tight">{currentUser.name}</span>
+            <span className="text-[10px] text-slate-500 font-medium block leading-tight">{currentUser.calling}</span>
+          </div>
+
+          {currentUser.isSuperAdmin && onRoleChange && (
+            <div className="pl-2 border-l border-slate-200 flex flex-col space-y-1">
+              <span className="text-[9px] uppercase font-bold text-blue-600">Signing As:</span>
+              <select
+                value={activeRole}
+                onChange={(e) => onRoleChange(e.target.value as BishopricRole)}
+                className="text-[11px] font-bold bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="bishop">Bishop (Francis Reyes)</option>
+                <option value="first_counselor">1st Counselor (Jim Albos)</option>
+                <option value="second_counselor">2nd Counselor (Alfred Ardon)</option>
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Sub-Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200/80 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('pending')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'pending'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Clock className="w-3.5 h-3.5 text-amber-400" />
-          <span>Pending Review ({pendingProposals.length})</span>
-        </button>
+      {/* Sub-Tabs & Bulk Log Tools */}
+      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2 overflow-x-auto gap-2">
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'pending'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pending Review ({pendingProposals.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('approved_action')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'approved_action'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Action Ready ({approvedActionProposals.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('approved_action')}
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'approved_action'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Action Ready ({approvedActionProposals.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('declined')}
-          className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'declined'
-              ? 'bg-slate-900 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <XCircle className="w-3.5 h-3.5 text-rose-400" />
-          <span>Declined ({declinedProposals.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('declined')}
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'declined'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <XCircle className="w-3.5 h-3.5 text-rose-400" />
+            <span>Declined ({declinedProposals.length})</span>
+          </button>
+        </div>
+
+        {proposals.some(p => (p.statusHistory && p.statusHistory.length > 0) || p.approvals?.bishop?.note || p.approvals?.first_counselor?.note || p.approvals?.second_counselor?.note) && onClearAllLogs && (
+          <button
+            type="button"
+            onClick={onClearAllLogs}
+            className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:border-rose-200 hover:bg-rose-50 transition-colors flex items-center space-x-1.5 shrink-0 ml-auto"
+            title="Clear discussion and action log history across all proposals"
+          >
+            <Trash2 className="w-3 h-3 text-rose-500" />
+            <span>Clear All Logs</span>
+          </button>
+        )}
       </div>
 
       {/* Proposal Cards List */}
       <div className="space-y-4">
         {displayedProposals.map((proposal) => {
+          const safeApprovals = {
+            bishop: { status: proposal.approvals?.bishop?.status || 'pending', ...(proposal.approvals?.bishop || {}) },
+            first_counselor: { status: proposal.approvals?.first_counselor?.status || 'pending', ...(proposal.approvals?.first_counselor || {}) },
+            second_counselor: { status: proposal.approvals?.second_counselor?.status || 'pending', ...(proposal.approvals?.second_counselor || {}) },
+          };
+
           const approvalValues = [
-            proposal.approvals.bishop.status,
-            proposal.approvals.first_counselor.status,
-            proposal.approvals.second_counselor.status,
+            safeApprovals.bishop.status,
+            safeApprovals.first_counselor.status,
+            safeApprovals.second_counselor.status,
           ];
           const approvedCount = approvalValues.filter(s => s === 'approved').length;
-          const isFullyApproved = approvedCount === 3;
-          const myApproval = (activeRole !== 'executive_secretary') 
-            ? proposal.approvals[activeRole] 
-            : null;
+          const isFullyApproved = approvedCount === 3 || proposal.finalStatus === 'approved_for_action';
 
           const candidates = proposal.candidates || [];
           const hasMultipleCandidates = candidates.length > 1;
-          const isUndecided = proposal.proposedMemberName.toLowerCase().includes('to be discussed');
+          const isUndecided = !proposal.proposedMemberName || proposal.proposedMemberName.toLowerCase().includes('to be discussed');
+
+          // User's own approval status
+          const mySigningRole = effectiveSigningRole === 'executive_secretary' ? 'bishop' : effectiveSigningRole;
+          const myStatus = safeApprovals[mySigningRole as 'bishop' | 'first_counselor' | 'second_counselor']?.status || 'pending';
+          const canCurrentUserSign = currentUser.isSuperAdmin || ['bishop', 'first_counselor', 'second_counselor'].includes(currentUser.role);
 
           return (
             <div
@@ -201,7 +260,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       {proposal.organization} • {proposal.subOrg}
                     </span>
                     {hasMultipleCandidates && (
-                      <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
+                      <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
                         <Users className="w-3 h-3" />
                         <span>{candidates.length} Candidates to Discuss</span>
                       </span>
@@ -250,7 +309,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   {isUndecided ? (
                     <span className="inline-flex items-center space-x-1 font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-md border border-amber-300">
                       <HelpCircle className="w-3 h-3 text-amber-700" />
-                      <span>{proposal.proposedMemberName}</span>
+                      <span>{proposal.proposedMemberName || 'To be discussed'}</span>
                     </span>
                   ) : (
                     <span className="font-bold text-emerald-900 bg-emerald-100 px-2.5 py-0.5 rounded-md border border-emerald-300 flex items-center space-x-1">
@@ -265,7 +324,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
               <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center space-x-2">
-                    <Users className="w-4 h-4 text-orange-600" />
+                    <Users className="w-4 h-4 text-blue-600" />
                     <span className="font-bold text-xs text-slate-800">
                       Candidate Discussion & Consideration Pool
                     </span>
@@ -278,9 +337,9 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
-                      className="bg-white hover:bg-slate-100 text-orange-700 font-bold text-xs px-2.5 py-1 rounded-lg border border-orange-200 transition-colors shadow-2xs flex items-center space-x-1"
+                      className="bg-white hover:bg-slate-100 text-blue-700 font-bold text-xs px-2.5 py-1 rounded-lg border border-blue-200 transition-colors shadow-2xs flex items-center space-x-1"
                     >
-                      <Plus className="w-3 h-3 text-orange-600" />
+                      <Plus className="w-3 h-3 text-blue-600" />
                       <span>+ Propose Additional Name</span>
                     </button>
                   )}
@@ -288,7 +347,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
 
                 {/* Inline Form to Add Alternative Candidate */}
                 {showAddCandidateMap[proposal.id] && (
-                  <div className="p-3 bg-white border border-orange-200 rounded-xl space-y-2 shadow-2xs">
+                  <div className="p-3 bg-white border border-blue-200 rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-slate-800">Add Another Candidate for Discussion:</span>
                       <button
@@ -306,14 +365,14 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         placeholder="Member name (e.g. Cruz, Mateo)..."
                         value={newCandidateNameMap[proposal.id] || ''}
                         onChange={(e) => setNewCandidateNameMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
-                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <input
                         type="text"
                         placeholder="Note / rationale (e.g. active, strong teacher)..."
                         value={newCandidateNoteMap[proposal.id] || ''}
                         onChange={(e) => setNewCandidateNoteMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
-                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
@@ -321,7 +380,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       <button
                         type="button"
                         onClick={() => handleAddNewCandidate(proposal.id)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>Add to Candidate Pool</span>
@@ -432,56 +491,94 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               )}
 
-              {/* 3-Point Matrix Pills */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                {(['bishop', 'first_counselor', 'second_counselor'] as const).map((role) => {
-                  const leader = BISHOPRIC_LEADERS[role];
-                  const app = proposal.approvals[role];
-                  const isMe = activeRole === role;
+              {/* 3-Point Matrix Status Cards */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                  <span>3-Point Bishopric Approval Sign-Offs</span>
+                  <span className="text-[10px] text-slate-400">All 3 required for sustaining</span>
+                </div>
 
-                  return (
-                    <div
-                      key={role}
-                      className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
-                        app.status === 'approved'
-                          ? 'bg-emerald-50/60 border-emerald-200/80 text-emerald-950'
-                          : app.status === 'rejected'
-                          ? 'bg-rose-50/60 border-rose-200/80 text-rose-950'
-                          : 'bg-slate-50 border-slate-200 text-slate-600'
-                      } ${isMe ? 'ring-2 ring-slate-900/10' : ''}`}
-                    >
-                      <div>
-                        <span className="font-semibold block">{leader.title}</span>
-                        <span className="text-[10px] text-slate-500">{leader.name}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(['bishop', 'first_counselor', 'second_counselor'] as const).map((role) => {
+                    const leader = BISHOPRIC_LEADERS[role];
+                    const app = safeApprovals[role];
+                    const isMyCard = effectiveSigningRole === role;
+
+                    return (
+                      <div
+                        key={role}
+                        className={`p-3 rounded-xl border text-xs flex flex-col justify-between space-y-1.5 transition-all ${
+                          app.status === 'approved'
+                            ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-950 shadow-2xs'
+                            : app.status === 'rejected'
+                            ? 'bg-rose-50/70 border-rose-200/80 text-rose-950 shadow-2xs'
+                            : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                        } ${isMyCard ? 'ring-1 ring-slate-900/10' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold block text-xs truncate">{leader.title}</span>
+                            <span className="text-[11px] text-slate-500 block truncate">{leader.name}</span>
+                          </div>
+
+                          {app.status === 'approved' ? (
+                            <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 shrink-0">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Approved</span>
+                            </span>
+                          ) : app.status === 'rejected' ? (
+                            <span className="bg-rose-100 text-rose-800 font-bold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 shrink-0">
+                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Declined</span>
+                            </span>
+                          ) : (
+                            <span className="bg-slate-200/70 text-slate-600 font-semibold text-[10px] px-2 py-0.5 rounded-full flex items-center space-x-1 shrink-0">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span>Pending</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {app.note && (
+                          <p className="text-[10px] text-slate-500 italic bg-white/60 p-1.5 rounded-lg border border-slate-200/40">
+                            "{app.note}"
+                          </p>
+                        )}
                       </div>
-
-                      {app.status === 'approved' ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ) : app.status === 'rejected' ? (
-                        <XCircle className="w-4 h-4 text-rose-600" />
-                      ) : (
-                        <Clock className="w-4 h-4 text-slate-400" />
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
               {/* History Toggle */}
               {proposal.statusHistory && proposal.statusHistory.length > 0 && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowHistoryMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center space-x-1"
-                  >
-                    <History className="w-3 h-3 text-slate-400" />
-                    <span>Discussion & Action Log ({proposal.statusHistory.length})</span>
-                    {showHistoryMap[proposal.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowHistoryMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center space-x-1"
+                    >
+                      <History className="w-3 h-3 text-slate-400" />
+                      <span>Discussion & Action Log ({proposal.statusHistory.length})</span>
+                      {showHistoryMap[proposal.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+
+                    {onClearProposalHistory && (
+                      <button
+                        type="button"
+                        onClick={() => onClearProposalHistory(proposal.id)}
+                        className="text-[10px] font-medium text-slate-400 hover:text-rose-600 transition-colors flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-rose-50"
+                        title="Clear action log for this proposal"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                        <span>Clear</span>
+                      </button>
+                    )}
+                  </div>
 
                   {showHistoryMap[proposal.id] && (
-                    <div className="mt-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1.5 max-h-36 overflow-y-auto">
+                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] space-y-1.5 max-h-36 overflow-y-auto">
                       {proposal.statusHistory.map((h, i) => (
                         <div key={i} className="flex items-start justify-between border-b border-slate-200/50 pb-1 last:border-0 last:pb-0">
                           <div>
@@ -497,45 +594,169 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               )}
 
+              {/* Declined Status Guidance Banner */}
+              {proposal.finalStatus === 'declined' && (
+                <div className="p-2.5 bg-rose-50/80 border border-rose-200/80 rounded-xl text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>
+                      <strong>Proposal Declined:</strong> Any leader who declined can change their decision above/below, or Super Admin can reset this proposal to bring it back into discussion.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Actions Footer */}
               <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                {proposal.finalStatus === 'pending_review' && (
+                {proposal.finalStatus !== 'sustained' && (
                   <div className="w-full sm:w-auto flex-1 max-w-md">
                     <input
                       type="text"
-                      placeholder={`Add optional note as ${currentLeader.title}...`}
+                      placeholder={`Add optional discussion/change note...`}
                       value={noteInputMap[proposal.id] || ''}
                       onChange={(e) => handleNoteChange(proposal.id, e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                      className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
                 )}
 
-                <div className="flex items-center space-x-2 w-full sm:w-auto justify-end ml-auto">
-                  {proposal.finalStatus === 'pending_review' && (
+                <div className="flex flex-wrap items-center space-x-2 w-full sm:w-auto justify-end ml-auto">
+                  {/* Declined Status Actions */}
+                  {proposal.finalStatus === 'declined' && (
                     <>
-                      <button
-                        onClick={() => handleAction(proposal.id, 'rejected')}
-                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors"
-                      >
-                        Decline
-                      </button>
+                      {/* If user's own role was rejected, allow changing to approved or resetting */}
+                      {canCurrentUserSign && myStatus === 'rejected' && (
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'approved')}
+                            disabled={isUndecided}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center space-x-1.5 ${
+                              isUndecided
+                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Change My Decision to Approve</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'pending')}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center space-x-1"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Reset My Vote</span>
+                          </button>
+                        </div>
+                      )}
 
-                      <button
-                        onClick={() => handleAction(proposal.id, 'approved')}
-                        disabled={isUndecided}
-                        className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-2xs ${
-                          isUndecided
-                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                            : 'bg-slate-900 hover:bg-slate-800 text-white'
-                        }`}
-                        title={isUndecided ? 'Please select a candidate before sign-off' : `Sign off as ${currentLeader.title}`}
-                      >
-                        {isUndecided ? 'Select Candidate First' : `Sign Off (${currentLeader.title})`}
-                      </button>
+                      {/* Super Admin Reset Proposal Action */}
+                      {currentUser.isSuperAdmin && onResetProposal && (
+                        <button
+                          type="button"
+                          onClick={() => onResetProposal(proposal.id, noteInputMap[proposal.id])}
+                          className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5"
+                          title="Reset all 3 sign-offs to pending and bring back for review"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset for Discussion</span>
+                        </button>
+                      )}
+
+                      {/* Super Admin Approve All Action */}
+                      {currentUser.isSuperAdmin && onSuperAdminApproveAll && (
+                        <button
+                          type="button"
+                          onClick={() => onSuperAdminApproveAll(proposal.id)}
+                          disabled={isUndecided}
+                          className={`font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1 ${
+                            isUndecided
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Approve All 3</span>
+                        </button>
+                      )}
                     </>
                   )}
 
+                  {/* Pending Review Actions */}
+                  {proposal.finalStatus === 'pending_review' && canCurrentUserSign && (
+                    <>
+                      {myStatus === 'approved' ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center space-x-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Signed Off as {currentLeader.title}</span>
+                          </span>
+                          <button
+                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'rejected')}
+                            className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            Change to Decline
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'rejected')}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-colors"
+                          >
+                            Decline
+                          </button>
+
+                          <button
+                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'approved')}
+                            disabled={isUndecided}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center space-x-1.5 ${
+                              isUndecided
+                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                            }`}
+                            title={isUndecided ? 'Please select a candidate before sign-off' : `Sign off as ${currentLeader.title}`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{isUndecided ? 'Select Candidate First' : `Sign Off (${currentLeader.title})`}</span>
+                          </button>
+                        </>
+                      )}
+
+                      {/* Super Admin Reset in Pending View */}
+                      {currentUser.isSuperAdmin && onResetProposal && (
+                        <button
+                          type="button"
+                          onClick={() => onResetProposal(proposal.id, noteInputMap[proposal.id])}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-1.5 px-2.5 rounded-xl transition-colors border border-slate-200 flex items-center space-x-1"
+                          title="Reset all votes to pending"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Reset Votes</span>
+                        </button>
+                      )}
+
+                      {/* Super Admin Quick Approve All in Pending View */}
+                      {currentUser.isSuperAdmin && !isFullyApproved && onSuperAdminApproveAll && (
+                        <button
+                          type="button"
+                          onClick={() => onSuperAdminApproveAll(proposal.id)}
+                          disabled={isUndecided}
+                          className={`font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1 ${
+                            isUndecided
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          }`}
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Approve All 3</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {/* Fully Approved Action */}
                   {isFullyApproved && proposal.finalStatus !== 'sustained' && (
                     <button
                       onClick={() => onSustainCalling(proposal)}
@@ -543,21 +764,6 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     >
                       <CheckCheck className="w-4 h-4" />
                       <span>Mark Sustained in Ward Meeting</span>
-                    </button>
-                  )}
-
-                  {currentUser.isSuperAdmin && !isFullyApproved && onSuperAdminApproveAll && (
-                    <button
-                      onClick={() => onSuperAdminApproveAll(proposal.id)}
-                      disabled={isUndecided}
-                      className={`font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1 ${
-                        isUndecided
-                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                          : 'bg-orange-500 hover:bg-orange-600 text-white'
-                      }`}
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>Approve All 3</span>
                     </button>
                   )}
                 </div>
@@ -579,4 +785,5 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
     </div>
   );
 };
+
 

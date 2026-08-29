@@ -30,7 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <div className="flex items-center space-x-2">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-orange-500 to-rose-500 flex items-center justify-center text-white font-bold shadow-xs">
+            <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-blue-600 via-blue-500 to-sky-400 flex items-center justify-center text-white font-bold shadow-xs">
               <Building2 className="w-4 h-4" />
             </div>
 
@@ -50,8 +50,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
           {syncStatus === 'syncing' && (
             <>
-              <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />
-              <span className="text-orange-700 font-medium">Syncing...</span>
+              <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+              <span className="text-blue-700 font-medium">Syncing...</span>
             </>
           )}
           {syncStatus === 'connecting' && (

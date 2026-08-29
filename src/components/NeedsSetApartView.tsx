@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calling } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
+import { sortCallings } from '../utils/callingSort';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -26,7 +27,7 @@ export const NeedsSetApartView: React.FC<NeedsSetApartViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const needsSetApartList = callings.filter(c => {
+  const needsSetApartList = sortCallings(callings.filter(c => {
     if (c.isVacant || c.setApart) return false;
 
     if (searchQuery.trim()) {
@@ -38,7 +39,7 @@ export const NeedsSetApartView: React.FC<NeedsSetApartViewProps> = ({
     }
 
     return true;
-  });
+  }));
 
   return (
     <div className="space-y-4">

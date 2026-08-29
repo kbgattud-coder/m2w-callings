@@ -115,7 +115,7 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
         {/* Modal Header */}
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 rounded-xl bg-orange-500 text-white">
+            <div className="p-2 rounded-xl bg-blue-600 text-white">
               <PlusCircle className="w-5 h-5" />
             </div>
             <div>
@@ -142,7 +142,7 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
             <select
               value={organization}
               onChange={(e) => handleOrgChange(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {orgList.map(org => (
                 <option key={org} value={org}>{org}</option>
@@ -159,7 +159,7 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
               <button
                 type="button"
                 onClick={() => setUseCustomSubOrg(!useCustomSubOrg)}
-                className="text-[11px] text-orange-600 hover:text-orange-700 font-semibold underline"
+                className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold underline"
               >
                 {useCustomSubOrg ? 'Choose from list' : '+ Custom Category'}
               </button>
@@ -171,13 +171,13 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
                 placeholder="e.g. Activities Committee, Youth Specialist, etc."
                 value={customSubOrg}
                 onChange={(e) => setCustomSubOrg(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             ) : (
               <select
                 value={subOrg}
                 onChange={(e) => setSubOrg(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {currentSuggestions.map(s => (
                   <option key={s} value={s}>{s}</option>
@@ -196,7 +196,7 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
               placeholder="e.g. Assistant Activity Coordinator, Welfare Specialist, etc."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -291,7 +291,7 @@ export const AddCustomCallingModal: React.FC<AddCustomCallingModalProps> = ({
             </button>
             <button
               type="submit"
-              className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors shadow-sm flex items-center space-x-1.5"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors shadow-sm flex items-center space-x-1.5"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Add Calling Position</span>

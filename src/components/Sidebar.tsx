@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 1. TOP HEADER BRAND LOGO */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-orange-500 to-rose-500 flex items-center justify-center text-white font-bold shadow-md shadow-orange-500/20 shrink-0">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-sky-400 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20 shrink-0">
               <Building2 className="w-5 h-5" />
             </div>
 
@@ -163,11 +163,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
-                  <FileCheck2 className="w-4 h-4 text-orange-500" />
+                  <FileCheck2 className="w-4 h-4 text-blue-500" />
                   <span>Needs Approval</span>
                 </div>
                 {metrics.pendingApprovalsCount > 0 && (
-                  <span className="bg-orange-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
+                  <span className="bg-blue-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
                     {metrics.pendingApprovalsCount}
                   </span>
                 )}
@@ -278,8 +278,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
               {syncStatus === 'syncing' && (
                 <>
-                  <Loader2 className="w-3 h-3 text-orange-500 animate-spin" />
-                  <span className="font-semibold text-orange-700">Syncing to Cloud...</span>
+                  <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                  <span className="font-semibold text-blue-700">Syncing to Cloud...</span>
                 </>
               )}
               {syncStatus === 'connecting' && (

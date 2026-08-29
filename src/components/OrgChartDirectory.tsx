@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Calling, CallingFilterStatus, CallingProposal } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
+import { sortCallings } from '../utils/callingSort';
 import { 
   Search, 
   Filter, 
@@ -61,9 +62,9 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
     return map;
   }, [proposals]);
 
-  // Filter callings
+  // Filter and sort callings strictly by ecclesiastical hierarchy
   const filteredCallings = useMemo(() => {
-    return callings.filter(c => {
+    const list = callings.filter(c => {
       // Org filter
       if (selectedOrg !== 'All Organizations' && selectedOrg !== 'All' && c.organization !== selectedOrg) {
         return false;
@@ -97,6 +98,8 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
 
       return true;
     });
+
+    return sortCallings(list);
   }, [callings, selectedOrg, filterStatus, searchQuery, proposalsMap]);
 
   return (
@@ -129,7 +132,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
               placeholder="Search calling or member..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
 
@@ -154,7 +157,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
           {onOpenAddCustomCalling && (
             <button
               onClick={onOpenAddCustomCalling}
-              className="flex items-center space-x-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-2xs"
+              className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-2xs"
               title="Add a custom auxiliary calling or specialist"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -213,7 +216,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     <td className="py-3.5 px-4">
                       <div 
                         onClick={() => onSelectCalling(calling)}
-                        className="font-bold text-slate-900 hover:text-orange-600 cursor-pointer text-xs leading-snug"
+                        className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer text-xs leading-snug"
                       >
                         {calling.title}
                       </div>
@@ -239,8 +242,8 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     {/* Status Dot */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       {activeProposal ? (
-                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full border border-orange-200/60 whitespace-nowrap">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0"></span>
+                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/60 whitespace-nowrap">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
                           <span>Proposal Pending</span>
                         </span>
                       ) : calling.isVacant ? (
@@ -333,7 +336,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                   <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium mb-1.5">
                     <span>{calling.organization} • {calling.subOrg}</span>
                     {activeProposal && (
-                      <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                         Pending
                       </span>
                     )}
@@ -341,7 +344,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
 
                   <h4 
                     onClick={() => onSelectCalling(calling)}
-                    className="font-bold text-slate-900 text-sm hover:text-orange-600 cursor-pointer transition-colors leading-snug"
+                    className="font-bold text-slate-900 text-sm hover:text-blue-600 cursor-pointer transition-colors leading-snug"
                   >
                     {calling.title}
                   </h4>

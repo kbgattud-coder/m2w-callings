@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calling } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
+import { sortCallings } from '../utils/callingSort';
 import { 
   Clock, 
   UserX, 
@@ -27,7 +28,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'vacant' | 'long_tenure'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const reviewCallings = callings.filter(c => {
+  const reviewCallings = sortCallings(callings.filter(c => {
     const tenure = calculateTenure(c.sustainedDate);
     const isLongTenure = !c.isVacant && tenure.totalMonths >= 36;
 
@@ -45,7 +46,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
     }
 
     return true;
-  });
+  }));
 
   const vacantCount = callings.filter(c => c.isVacant).length;
   const longTenureCount = callings.filter(c => {
@@ -126,7 +127,7 @@ export const ConsiderForReviewView: React.FC<ConsiderForReviewViewProps> = ({
 
                 <h3
                   onClick={() => onSelectCalling(calling)}
-                  className="font-bold text-slate-900 text-sm hover:text-orange-600 cursor-pointer transition-colors"
+                  className="font-bold text-slate-900 text-sm hover:text-blue-600 cursor-pointer transition-colors"
                 >
                   {calling.title}
                 </h3>

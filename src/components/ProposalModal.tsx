@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Calling, BishopricRole, WardMember, ProposalType, AuthUser, CandidateOption } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
+import { sortCallings } from '../utils/callingSort';
 import { X, UserPlus, AlertCircle, RefreshCw, CheckCircle2, Users, Plus, Trash2, HelpCircle } from 'lucide-react';
 
 interface ProposalModalProps {
@@ -178,7 +179,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
         {/* Modal Header */}
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center">
               <UserPlus className="w-4 h-4" />
             </div>
             <div>
@@ -205,10 +206,10 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
             <select
               value={selectedCallingId}
               onChange={(e) => setSelectedCallingId(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">-- Choose a calling position --</option>
-              {allCallings.map((c) => (
+              {sortCallings(allCallings).map((c) => (
                 <option key={c.id} value={c.id}>
                   [{c.organization}] {c.title} {c.isVacant ? '(Vacant)' : `(Current: ${c.memberName})`}
                 </option>
@@ -246,7 +247,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 onClick={() => setCandidateMode('single')}
                 className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
                   candidateMode === 'single'
-                    ? 'bg-orange-50 border-orange-400 text-orange-950 ring-2 ring-orange-400/20'
+                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
@@ -258,7 +259,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 onClick={() => setCandidateMode('multiple')}
                 className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all flex items-center justify-center space-x-1 ${
                   candidateMode === 'multiple'
-                    ? 'bg-orange-50 border-orange-400 text-orange-950 ring-2 ring-orange-400/20'
+                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
@@ -271,7 +272,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 onClick={() => setCandidateMode('open')}
                 className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
                   candidateMode === 'open'
-                    ? 'bg-orange-50 border-orange-400 text-orange-950 ring-2 ring-orange-400/20'
+                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
@@ -291,7 +292,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 placeholder="Type member name (e.g. Reyes, Francisco)..."
                 value={candidateName}
                 onChange={(e) => setCandidateName(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
 
               {singleCandidateCurrentCallings.length > 0 && (
@@ -321,7 +322,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddCandidateRow}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg transition-colors flex items-center space-x-1 shadow-2xs"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg transition-colors flex items-center space-x-1 shadow-2xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Name</span>
@@ -344,7 +345,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                             placeholder={`Candidate ${idx + 1} Name (e.g. Santos, Juan)...`}
                             value={cand.name}
                             onChange={(e) => handleUpdateCandidateRow(cand.id, 'name', e.target.value)}
-                            className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
 
@@ -366,7 +367,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           placeholder="Optional notes / rationale for this candidate..."
                           value={cand.note}
                           onChange={(e) => handleUpdateCandidateRow(cand.id, 'note', e.target.value)}
-                          className="flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         
                         <label className="flex items-center space-x-1 cursor-pointer shrink-0 text-[11px] text-slate-600 font-medium select-none bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200">
@@ -375,7 +376,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                             name="leadingCandidate"
                             checked={cand.isLeading}
                             onChange={() => handleSetLeadingCandidate(cand.id)}
-                            className="text-orange-600 focus:ring-orange-500"
+                            className="text-blue-600 focus:ring-blue-500"
                           />
                           <span>Primary Choice</span>
                         </label>
@@ -420,11 +421,11 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               placeholder="Enter proposing leader name (e.g. Relief Society President, Elders Quorum President, etc.)..."
               value={proposingLeaderName}
               onChange={(e) => setProposingLeaderName(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* General Recommendation Note */}
+          {/* General Recommendation Context / Note */}
           <div>
             <label className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
               General Recommendation Context / Note:
@@ -434,7 +435,7 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               placeholder="Provide background context on why this position is being filled..."
               value={reasonNote}
               onChange={(e) => setReasonNote(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
