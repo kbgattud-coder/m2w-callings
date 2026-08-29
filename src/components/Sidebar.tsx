@@ -98,8 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* 1. TOP HEADER BRAND LOGO */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-sky-400 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20 shrink-0">
-              <Building2 className="w-5 h-5" />
+            <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 shadow-xs flex items-center justify-center bg-blue-600">
+              <img 
+                src="https://pub-5497f73b6290403fb534fbb3f47ef636.r2.dev/root/Masagana%202nd%20192x192.svg" 
+                alt="Masagana 2nd Ward Logo" 
+                className="w-full h-full object-cover scale-105"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
             <div>

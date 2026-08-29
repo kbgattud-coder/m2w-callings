@@ -102,8 +102,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         
         {/* Header Banner */}
         <div className="bg-slate-950 p-6 text-white text-center border-b border-slate-800">
-          <div className="h-14 w-14 rounded-2xl bg-blue-600 mx-auto flex items-center justify-center text-white shadow-lg ring-4 ring-blue-500/30 mb-3">
-            <Building2 className="w-8 h-8" />
+          <div className="h-16 w-16 rounded-full bg-blue-600 mx-auto flex items-center justify-center shadow-lg ring-4 ring-blue-500/30 mb-3 overflow-hidden">
+            <img 
+              src="https://pub-5497f73b6290403fb534fbb3f47ef636.r2.dev/root/Masagana%202nd%20192x192.svg" 
+              alt="Masagana 2nd Ward Logo" 
+              className="w-full h-full object-cover scale-105"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-blue-950/80 border border-blue-800 px-2.5 py-0.5 rounded-full inline-block mb-1">
             Official Ward System

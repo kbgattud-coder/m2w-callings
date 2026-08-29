@@ -30,8 +30,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <div className="flex items-center space-x-2">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-blue-600 via-blue-500 to-sky-400 flex items-center justify-center text-white font-bold shadow-xs">
-              <Building2 className="w-4 h-4" />
+            <div className="h-8 w-8 rounded-full overflow-hidden shrink-0 shadow-2xs flex items-center justify-center bg-blue-600">
+              <img 
+                src="https://pub-5497f73b6290403fb534fbb3f47ef636.r2.dev/root/Masagana%202nd%20192x192.svg" 
+                alt="Masagana 2nd Ward Logo" 
+                className="w-full h-full object-cover scale-105"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
             <span className="text-sm font-bold text-slate-900 tracking-tight">
