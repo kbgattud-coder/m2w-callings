@@ -30,13 +30,25 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
   longTenureCount,
   onFilterClick,
 }) => {
-  // Collapsed by default on mobile and tablet (< 1024px)
-  const [isCollapsedOnMobile, setIsCollapsedOnMobile] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1024;
+  // Collapsed by default on all devices (desktop, tablet, mobile)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('masagana_stats_collapsed_v1') : null;
+    if (saved !== null) {
+      return saved === 'true';
     }
-    return true;
+    return true; // Default collapsed on desktop and mobile
   });
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('masagana_stats_collapsed_v1', String(next));
+      }
+      return next;
+    });
+  };
+
   const filledCount = totalCallings - vacantCount;
   const filledPercentage = totalCallings > 0 ? Math.round((filledCount / totalCallings) * 100) : 0;
 
@@ -85,15 +97,15 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
           </div>
         </div>
 
-        {/* Banner Footer Note + Quick Mobile/Tablet Collapse Toggle */}
+        {/* Banner Footer Note + Quick Collapse Toggle (Desktop & Mobile) */}
         <div className="mt-2.5 sm:mt-4 pt-2.5 sm:pt-3 border-t border-white/20 flex items-center justify-between relative z-10 text-xs">
           <div className="flex items-center space-x-2 truncate max-w-[70%] sm:max-w-[80%]">
             <p className="text-[11px] sm:text-xs font-medium text-white truncate">
               Good morning, <span className="font-bold">{userName}</span>
             </p>
-            {isCollapsedOnMobile && (
-              <span className="hidden sm:inline-flex items-center space-x-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold text-white">
-                <span>{pendingApprovalsCount} Pending</span>
+            {isCollapsed && (
+              <span className="hidden sm:inline-flex items-center space-x-1.5 text-[10px] bg-white/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full font-bold text-white shadow-2xs">
+                <span>{pendingApprovalsCount} Approvals Pending</span>
                 <span>•</span>
                 <span>{vacantCount} Vacant</span>
                 <span>•</span>
@@ -104,48 +116,67 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsCollapsedOnMobile(!isCollapsedOnMobile)}
-            className="lg:hidden text-[11px] font-bold text-white bg-white/20 hover:bg-white/30 backdrop-blur-xs px-2.5 py-1 rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0 ml-2"
+            onClick={handleToggleCollapse}
+            className="text-[11px] font-bold text-white bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-xs px-3 py-1.5 rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer shrink-0 ml-2 shadow-2xs border border-white/20"
             title="Toggle stats metrics cards visibility"
           >
-            <span>{isCollapsedOnMobile ? 'Show Metrics' : 'Hide Metrics'}</span>
-            {isCollapsedOnMobile ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            <span>{isCollapsed ? 'Show Metrics' : 'Hide Metrics'}</span>
+            {isCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
 
-      {/* Mini quick-stats strip on mobile when collapsed */}
-      {isCollapsedOnMobile && (
-        <div className="lg:hidden flex items-center justify-between gap-1.5 px-3 py-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300 shadow-2xs">
-          <button
-            type="button"
-            onClick={() => onFilterClick && onFilterClick('has_proposal')}
-            className="flex items-center space-x-1 hover:text-blue-600 dark:hover:text-blue-400 font-bold text-blue-700 dark:text-blue-300"
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 inline-block" />
-            <span>{pendingApprovalsCount} Approvals</span>
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <button
-            type="button"
-            onClick={() => onFilterClick && onFilterClick('vacant')}
-            className="flex items-center space-x-1 hover:text-slate-900 dark:hover:text-white"
-          >
-            <span>{vacantCount} Vacant</span>
-          </button>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <button
-            type="button"
-            onClick={() => onFilterClick && onFilterClick('needs_set_apart')}
-            className="flex items-center space-x-1 hover:text-purple-600 dark:hover:text-purple-400 font-semibold text-purple-700 dark:text-purple-300"
-          >
-            <span>{needsSetApartCount} Set Apart</span>
-          </button>
+      {/* Mini quick-stats strip on desktop & mobile when collapsed */}
+      {isCollapsed && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-800 text-xs font-medium text-slate-600 dark:text-slate-300 shadow-xs">
+          <div className="flex items-center space-x-3 sm:space-x-4 flex-wrap gap-y-1">
+            <button
+              type="button"
+              onClick={() => onFilterClick && onFilterClick('has_proposal')}
+              className="flex items-center space-x-1.5 hover:text-blue-600 dark:hover:text-blue-400 font-bold text-blue-700 dark:text-blue-300 transition-colors cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 inline-block" />
+              <span>{pendingApprovalsCount} Approvals Pending</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+            <button
+              type="button"
+              onClick={() => onFilterClick && onFilterClick('vacant')}
+              className="flex items-center space-x-1.5 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer font-semibold"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 inline-block" />
+              <span>{vacantCount} Vacant Callings</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+            <button
+              type="button"
+              onClick={() => onFilterClick && onFilterClick('needs_set_apart')}
+              className="flex items-center space-x-1.5 hover:text-purple-600 dark:hover:text-purple-400 font-semibold text-purple-700 dark:text-purple-300 transition-colors cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0 inline-block" />
+              <span>{needsSetApartCount} Needs Set Apart</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+            <button
+              type="button"
+              onClick={() => onFilterClick && onFilterClick('long_tenure')}
+              className="flex items-center space-x-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 font-semibold text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 inline-block" />
+              <span>{longTenureCount} Serving 3+ Yrs</span>
+            </button>
+          </div>
+
+          <div className="hidden lg:flex items-center space-x-2 text-[11px] text-slate-400 dark:text-slate-500">
+            <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-800/80">
+              {filledPercentage}% Filled ({filledCount}/{totalCallings})
+            </span>
+          </div>
         </div>
       )}
 
-      {/* Metric Cards Grid - Compact 2x2 on Mobile/Tablet, 4-col on Desktop, with Crisp Dark Mode Card Distinction */}
-      {!isCollapsedOnMobile && (
+      {/* Metric Cards Grid - Compact 2x2 on Mobile/Tablet, 4-col on Desktop when expanded */}
+      {!isCollapsed && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
           
           {/* Card 1: VIBRANT ROYAL BLUE HERO CARD (Pending Approvals) */}
