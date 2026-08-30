@@ -14,16 +14,20 @@ import {
   ProposalType,
   AuthUser,
   WardMember,
-  CandidateOption
+  CandidateOption,
+  CouncilMessage
 } from './types';
 import { INITIAL_CALLINGS, INITIAL_PROPOSALS, WARD_MEMBERS, BISHOPRIC_LEADERS } from './data/initialData';
 import { 
   subscribeToCallings, 
   subscribeToProposals, 
+  subscribeToCouncilMessages,
   saveCallingToFirestore, 
   deleteCallingFromFirestore, 
   saveProposalToFirestore, 
   deleteProposalFromFirestore, 
+  saveCouncilMessageToFirestore,
+  deleteCouncilMessageFromFirestore,
   resetFirestoreToDefaults,
   ensureDatabaseSeeded,
   clearAllProposalsHistory,
@@ -42,6 +46,7 @@ import { ProposalModal } from './components/ProposalModal';
 import { CallingDetailModal } from './components/CallingDetailModal';
 import { AddCustomCallingModal } from './components/AddCustomCallingModal';
 import { ManualCallingModal } from './components/ManualCallingModal';
+import { ConfirmModal } from './components/ConfirmModal';
 import { calculateTenure, getTodayDateString } from './utils/tenure';
 import { sortCallings } from './utils/callingSort';
 
@@ -94,6 +99,30 @@ export default function App() {
   // Mobile Sidebar Drawer State
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // Dark Mode Theme State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('masagana_theme_dark');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  // Apply dark mode class to document element
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('masagana_theme_dark', 'true');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('masagana_theme_dark', 'false');
+    }
+  }, [isDarkMode]);
+
+  const handleToggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
+
   // Firestore Real-time Cloud Sync Status
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'syncing' | 'error'>('connecting');
 
@@ -115,6 +144,15 @@ export default function App() {
     return INITIAL_PROPOSALS;
   });
 
+  // Council Message Board State (Real-time Cloud Sync + Local Cache)
+  const [councilMessages, setCouncilMessages] = useState<CouncilMessage[]>(() => {
+    const saved = localStorage.getItem('masagana_2nd_ward_messages_v2');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+
   // Modals state
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [proposalTargetCalling, setProposalTargetCalling] = useState<Calling | null>(null);
@@ -122,6 +160,16 @@ export default function App() {
   const [isAddCustomModalOpen, setIsAddCustomModalOpen] = useState(false);
   const [isManualCallingModalOpen, setIsManualCallingModalOpen] = useState(false);
   const [manualCallingTarget, setManualCallingTarget] = useState<Calling | null>(null);
+
+  // In-app Confirmation Modal State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  } | null>(null);
 
   // 1. Setup Firestore Real-time Subscriptions & Cloud Sync
   useEffect(() => {
@@ -151,12 +199,6 @@ export default function App() {
       (loadedProposals) => {
         setProposals(loadedProposals);
         setSyncStatus('connected');
-
-        // If any proposals contain old discussion logs, auto-clear them once to clean up
-        const hasLogs = loadedProposals.some(p => p.statusHistory && p.statusHistory.length > 0);
-        if (hasLogs) {
-          clearAllProposalsHistory().catch(err => console.warn('Auto clear logs err:', err));
-        }
       },
       (error) => {
         console.error('Proposals subscription failed:', error);
@@ -164,9 +206,20 @@ export default function App() {
       }
     );
 
+    // Real-time listener for Council Messages collection
+    const unsubscribeMessages = subscribeToCouncilMessages(
+      (loadedMessages) => {
+        setCouncilMessages(loadedMessages);
+      },
+      (error) => {
+        console.error('Council messages subscription failed:', error);
+      }
+    );
+
     return () => {
       unsubscribeCallings();
       unsubscribeProposals();
+      unsubscribeMessages();
     };
   }, []);
 
@@ -190,6 +243,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PROPOSALS, JSON.stringify(proposals));
   }, [proposals]);
+
+  useEffect(() => {
+    localStorage.setItem('masagana_2nd_ward_messages_v2', JSON.stringify(councilMessages));
+  }, [councilMessages]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ROLE, activeRole);
@@ -485,7 +542,12 @@ export default function App() {
   };
 
   // Member Declined Calling Interview -> Reset for Discussion
-  const handleMemberDeclined = async (proposalId: string, reasonNote: string, resetForDiscussion: boolean = true) => {
+  const handleMemberDeclined = async (
+    proposalId: string, 
+    reasonNote: string, 
+    resetForDiscussion: boolean = true,
+    promoteCandidateId?: string
+  ) => {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
@@ -498,15 +560,30 @@ export default function App() {
       second_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
     };
 
+    let newProposedName = prop.proposedMemberName;
+    let newSelectedCandidateId = prop.selectedCandidateId;
+
+    if (promoteCandidateId && prop.candidates) {
+      const candidateToPromote = prop.candidates.find(c => c.id === promoteCandidateId);
+      if (candidateToPromote) {
+        newProposedName = candidateToPromote.name;
+        newSelectedCandidateId = candidateToPromote.id;
+      }
+    }
+
     const updatedProposal: CallingProposal = {
       ...prop,
+      proposedMemberName: newProposedName,
+      selectedCandidateId: newSelectedCandidateId,
       approvals: resetApprovals,
       finalStatus: 'pending_review',
       statusHistory: [
         ...(prop.statusHistory || []),
         {
           date: todayIso,
-          action: `Member declined calling — Reset for Bishopric discussion`,
+          action: promoteCandidateId 
+            ? `Member declined calling — Promoted alternative ${newProposedName} for Bishopric review`
+            : `Member declined calling — Reset for Bishopric discussion`,
           actor: actorName,
           note: reasonNote || 'Candidate unable to accept calling. Reset to Stage 1: Pending Review for alternative candidate consideration.',
         }
@@ -561,6 +638,50 @@ export default function App() {
     }
   };
 
+  // Stage 4 Batch: Mark All Sustained Recorded in LCR
+  const handleMarkAllRecordedInLCR = async () => {
+    const unrecorded = proposals.filter(
+      p => (p.finalStatus === 'for_recording' || p.finalStatus === 'sustained') && !p.isRecordedInLCR
+    );
+    if (unrecorded.length === 0) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const clerkName = currentUser ? currentUser.name : 'Ward Clerk';
+
+    const updatedProposals = proposals.map(p => {
+      if ((p.finalStatus === 'for_recording' || p.finalStatus === 'sustained') && !p.isRecordedInLCR) {
+        return {
+          ...p,
+          isRecordedInLCR: true,
+          recordedInLCRDate: todayIso,
+          recordedByClerk: clerkName,
+          statusHistory: [
+            ...(p.statusHistory || []),
+            {
+              date: todayIso,
+              action: 'Recorded in Leader and Clerk Resources (LCR) [Batch]',
+              actor: clerkName,
+              note: 'Batch LCR recording completed.',
+            }
+          ]
+        };
+      }
+      return p;
+    });
+
+    setProposals(updatedProposals);
+    setSyncStatus('syncing');
+    try {
+      for (const p of updatedProposals.filter(p => (p.finalStatus === 'for_recording' || p.finalStatus === 'sustained'))) {
+        await saveProposalToFirestore(p);
+      }
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to batch sync LCR records:', e);
+      setSyncStatus('error');
+    }
+  };
+
   // Super Admin / Bishopric Reset Proposal for Discussion (Re-open declined or existing proposals)
   const handleResetProposal = async (proposalId: string, reason?: string) => {
     const prop = proposals.find(p => p.id === proposalId);
@@ -604,8 +725,13 @@ export default function App() {
     }
   };
 
-  // Clear all discussion & action logs across all proposals
+  // Clear all discussion & action logs across all proposals (Super Admin Only)
   const handleClearAllLogs = async () => {
+    if (!currentUser?.isSuperAdmin) {
+      alert('Only the Super Admin has permission to clear all proposal logs.');
+      return;
+    }
+
     setProposals(prev => prev.map(p => ({
       ...p,
       statusHistory: [],
@@ -626,8 +752,13 @@ export default function App() {
     }
   };
 
-  // Clear log for a single proposal
+  // Clear log for a single proposal (Super Admin Only)
   const handleClearProposalHistory = async (proposalId: string) => {
+    if (!currentUser?.isSuperAdmin) {
+      alert('Only the Super Admin has permission to clear proposal history logs.');
+      return;
+    }
+
     setProposals(prev => prev.map(p => p.id === proposalId ? {
       ...p,
       statusHistory: [],
@@ -644,6 +775,166 @@ export default function App() {
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to clear proposal history in Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Add Council Message directly to the dedicated Message Board
+  const handlePostCouncilMessage = async (proposalId: string, text: string) => {
+    if (!text || !text.trim()) return;
+    const prop = proposals.find(p => p.id === proposalId);
+    const callingTitle = prop ? prop.callingTitle : 'Calling';
+    const org = prop ? prop.organization : '';
+
+    const actorName = currentUser?.name || 'Leader';
+    const actorRole = currentUser?.isSuperAdmin 
+      ? 'Super Admin' 
+      : currentUser?.calling || currentUser?.role || 'Council Member';
+
+    const now = new Date();
+    const formattedTime = now.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    const newMsg: CouncilMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      proposalId,
+      callingId: prop?.callingId,
+      callingTitle,
+      organization: org,
+      authorName: actorName,
+      authorRole: actorRole,
+      authorCalling: currentUser?.calling,
+      authorId: currentUser?.id,
+      text: text.trim(),
+      createdAt: now.toISOString(),
+      timestampFormatted: formattedTime,
+    };
+
+    // Instant local state update
+    setCouncilMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
+
+    // Persist directly to Firestore
+    try {
+      await saveCouncilMessageToFirestore(newMsg);
+    } catch (err) {
+      console.error('Failed to save council message to Firestore:', err);
+    }
+  };
+
+  // Delete Council Message from the Message Board
+  const handleDeleteCouncilMessage = async (messageId: string) => {
+    // Instant optimistic update
+    setCouncilMessages(prev => prev.filter(m => m.id !== messageId));
+
+    // Persist deletion to Firestore
+    try {
+      await deleteCouncilMessageFromFirestore(messageId);
+    } catch (err) {
+      console.error('Failed to delete council message from Firestore:', err);
+    }
+  };
+
+  // Add Discussion Note / Comment directly to Proposal (legacy fallback)
+  const handleAddDiscussionNote = async (proposalId: string, noteText: string) => {
+    // Also post to dedicated message board
+    await handlePostCouncilMessage(proposalId, noteText);
+  };
+
+  // Remove a specific discussion note / comment from a Proposal
+  const handleRemoveDiscussionNote = async (proposalId: string, noteIndex: number, noteId?: string) => {
+    if (noteId) {
+      await handleDeleteCouncilMessage(noteId);
+    }
+  };
+
+  // Finalize Candidate from Council Discussion -> Move to Stage 1: Pending Review
+  const handleFinalizeCandidateForStage1 = async (
+    proposalId: string, 
+    candidateName: string, 
+    candidateId?: string, 
+    note?: string
+  ) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop || !candidateName.trim()) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser?.isSuperAdmin 
+      ? `${currentUser.name} (Super Admin)`
+      : currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
+
+    const resetApprovals = {
+      bishop: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+      first_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+      second_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+    };
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      proposedMemberName: candidateName.trim(),
+      selectedCandidateId: candidateId || prop.selectedCandidateId,
+      approvals: resetApprovals,
+      finalStatus: 'pending_review',
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: `Finalized candidate "${candidateName.trim()}" — Sent to Stage 1: Pending Review for Bishopric vote`,
+          actor: actorName,
+          note: note || 'Candidate selected from council discussion. Reset to Stage 1 for 3-point unanimity vote.',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to finalize candidate for Stage 1 in Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Close Discussion / Mark Declined
+  const handleCloseDiscussion = async (proposalId: string, note?: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser?.isSuperAdmin 
+      ? `${currentUser.name} (Super Admin)`
+      : currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      finalStatus: 'declined',
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: 'Closed council discussion',
+          actor: actorName,
+          note: note || 'Discussion closed by council.',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to close discussion in Firestore:', e);
       setSyncStatus('error');
     }
   };
@@ -1134,82 +1425,97 @@ export default function App() {
   };
 
   // Delete Vacant Calling Position
-  const handleDeleteCalling = async (callingId: string, callingTitle?: string) => {
+  const handleDeleteCalling = (callingId: string, callingTitle?: string) => {
     const target = callings.find(c => c.id === callingId);
     const title = callingTitle || target?.title || 'this position';
 
-    if (!confirm(`Are you sure you want to delete the vacant position "${title}"? This will remove it from the organization directory.`)) {
-      return;
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Vacant Position',
+      message: `Are you sure you want to delete the vacant position "${title}"? This will remove it from the organization directory.`,
+      confirmLabel: 'Delete Position',
+      variant: 'danger',
+      onConfirm: async () => {
+        const relatedProposals = proposals.filter(p => p.callingId === callingId);
 
-    const relatedProposals = proposals.filter(p => p.callingId === callingId);
+        // 1. Remove from callings list
+        setCallings(prev => prev.filter(c => c.id !== callingId));
 
-    // 1. Remove from callings list
-    setCallings(prev => prev.filter(c => c.id !== callingId));
+        // 2. Remove any proposals for this calling
+        setProposals(prev => prev.filter(p => p.callingId !== callingId));
 
-    // 2. Remove any proposals for this calling
-    setProposals(prev => prev.filter(p => p.callingId !== callingId));
+        // 3. Close detail modal if open
+        if (selectedCallingDetail && selectedCallingDetail.id === callingId) {
+          setSelectedCallingDetail(null);
+        }
 
-    // 3. Close detail modal if open
-    if (selectedCallingDetail && selectedCallingDetail.id === callingId) {
-      setSelectedCallingDetail(null);
-    }
-
-    setSyncStatus('syncing');
-    try {
-      await deleteCallingFromFirestore(callingId);
-      await Promise.all(relatedProposals.map(p => deleteProposalFromFirestore(p.id)));
-      setSyncStatus('connected');
-    } catch (e) {
-      console.error('Failed to sync calling deletion to Firestore:', e);
-      setSyncStatus('error');
-    }
+        setSyncStatus('syncing');
+        try {
+          await deleteCallingFromFirestore(callingId);
+          await Promise.all(relatedProposals.map(p => deleteProposalFromFirestore(p.id)));
+          setSyncStatus('connected');
+        } catch (e) {
+          console.error('Failed to sync calling deletion to Firestore:', e);
+          setSyncStatus('error');
+        }
+      }
+    });
   };
 
   // Delete a Calling Proposal
-  const handleDeleteProposal = async (proposalId: string, callingTitle?: string) => {
+  const handleDeleteProposal = (proposalId: string, callingTitle?: string) => {
     const target = proposals.find(p => p.id === proposalId);
     const title = callingTitle || target?.callingTitle || 'this proposal';
 
-    if (!confirm(`Are you sure you want to delete the proposal for "${title}"? This will permanently remove it from the approvals queue.`)) {
-      return;
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Calling Proposal',
+      message: `Are you sure you want to delete the proposal for "${title}"? This will permanently remove it from the approvals queue.`,
+      confirmLabel: 'Delete Proposal',
+      variant: 'danger',
+      onConfirm: async () => {
+        // 1. Optimistic removal from state
+        setProposals(prev => prev.filter(p => p.id !== proposalId));
 
-    // 1. Optimistic removal from state
-    setProposals(prev => prev.filter(p => p.id !== proposalId));
+        // 2. Persist locally
+        const updated = proposals.filter(p => p.id !== proposalId);
+        localStorage.setItem(STORAGE_KEYS.PROPOSALS, JSON.stringify(updated));
 
-    // 2. Persist locally
-    const updated = proposals.filter(p => p.id !== proposalId);
-    localStorage.setItem(STORAGE_KEYS.PROPOSALS, JSON.stringify(updated));
-
-    setSyncStatus('syncing');
-    try {
-      await deleteProposalFromFirestore(proposalId);
-      setSyncStatus('connected');
-    } catch (e) {
-      console.error('Failed to delete proposal from Firestore:', e);
-      setSyncStatus('error');
-    }
+        setSyncStatus('syncing');
+        try {
+          await deleteProposalFromFirestore(proposalId);
+          setSyncStatus('connected');
+        } catch (e) {
+          console.error('Failed to delete proposal from Firestore:', e);
+          setSyncStatus('error');
+        }
+      }
+    });
   };
 
   // Reset Data to Original Default in Cloud Firestore
-  const handleResetData = async () => {
-    if (confirm('Are you sure you want to reset all calling approvals and restoration data to the ward default report in cloud Firestore?')) {
-      setSyncStatus('syncing');
-      try {
-        await resetFirestoreToDefaults();
-        setCallings(sortCallings(INITIAL_CALLINGS));
-        setProposals(INITIAL_PROPOSALS);
-        localStorage.removeItem(STORAGE_KEYS.CALLINGS);
-        localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
-        setSyncStatus('connected');
-        alert('Ward database successfully reset and synced to cloud Firestore defaults.');
-      } catch (e) {
-        console.error('Failed to reset Firestore to defaults:', e);
-        setSyncStatus('error');
-        alert('Failed to reset cloud database. Please verify your connection.');
+  const handleResetData = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset Ward Database',
+      message: 'Are you sure you want to reset all calling approvals and restoration data to the ward default report in cloud Firestore?',
+      confirmLabel: 'Reset Database',
+      variant: 'warning',
+      onConfirm: async () => {
+        setSyncStatus('syncing');
+        try {
+          await resetFirestoreToDefaults();
+          setCallings(sortCallings(INITIAL_CALLINGS));
+          setProposals(INITIAL_PROPOSALS);
+          localStorage.removeItem(STORAGE_KEYS.CALLINGS);
+          localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
+          setSyncStatus('connected');
+        } catch (e) {
+          console.error('Failed to reset Firestore to defaults:', e);
+          setSyncStatus('error');
+        }
       }
-    }
+    });
   };
 
   // Render Login Screen if user is not authenticated
@@ -1218,13 +1524,15 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex flex-col antialiased">
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans flex flex-col antialiased transition-colors duration-200">
       
       {/* Top Header for Mobile */}
       <Navbar
         isMobileSidebarOpen={isMobileSidebarOpen}
         onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
         syncStatus={syncStatus}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
       />
 
       {/* Main Body Layout with Sticky Sidebar + Main View */}
@@ -1240,6 +1548,8 @@ export default function App() {
           metrics={metrics}
           callingCountByOrg={callingCountByOrg}
           syncStatus={syncStatus}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
           onResetData={handleResetData}
           onLogout={handleLogout}
           isMobileOpen={isMobileSidebarOpen}
@@ -1290,6 +1600,7 @@ export default function App() {
               proposals={proposals}
               allCallings={callings}
               activeRole={activeRole}
+              councilMessages={councilMessages}
               onRoleChange={setActiveRole}
               onUpdateApproval={handleUpdateApproval}
               onAssignInterviewer={handleAssignInterviewer}
@@ -1297,6 +1608,7 @@ export default function App() {
               onMemberDeclined={handleMemberDeclined}
               onMarkSustained={handleSustainCalling}
               onMarkRecordedInLCR={handleMarkRecordedInLCR}
+              onMarkAllRecordedInLCR={handleMarkAllRecordedInLCR}
               onToggleSetApart={handleToggleSetApart}
               onResetProposal={handleResetProposal}
               onClearAllLogs={handleClearAllLogs}
@@ -1305,6 +1617,12 @@ export default function App() {
               onSelectCandidate={handleSelectCandidate}
               onAddCandidateToProposal={handleAddCandidateToProposal}
               onRemoveCandidateFromProposal={handleRemoveCandidateFromProposal}
+              onAddDiscussionNote={handleAddDiscussionNote}
+              onRemoveDiscussionNote={handleRemoveDiscussionNote}
+              onPostCouncilMessage={handlePostCouncilMessage}
+              onDeleteCouncilMessage={handleDeleteCouncilMessage}
+              onFinalizeCandidateForStage1={handleFinalizeCandidateForStage1}
+              onCloseDiscussion={handleCloseDiscussion}
               onSuperAdminApproveAll={handleSuperAdminApproveAll}
               onDeleteProposal={handleDeleteProposal}
               activeSubTab={approvalsSubTab}
@@ -1346,7 +1664,7 @@ export default function App() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500">
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-3 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors">
         <p>
           Masagana 2nd Ward (298506) • Antipolo Philippines Stake (527467) • Calling Approvals System • Cloud Firestore Synced
         </p>
@@ -1398,6 +1716,18 @@ export default function App() {
         onSaveCalling={handleDirectUpdateCalling}
         currentUser={currentUser}
       />
+
+      {confirmDialog && (
+        <ConfirmModal
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onClose={() => setConfirmDialog(null)}
+        />
+      )}
 
     </div>
   );

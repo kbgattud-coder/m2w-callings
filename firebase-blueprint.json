@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "calling": {
+      "title": "Calling",
+      "description": "A church calling / position in Masagana 2nd Ward",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "organization": { "type": "string" },
+        "subOrg": { "type": "string" },
+        "title": { "type": "string" },
+        "memberName": { "type": "string" },
+        "sustainedDate": { "type": "string" },
+        "setApart": { "type": "boolean" },
+        "isVacant": { "type": "boolean" },
+        "isCustom": { "type": "boolean" }
+      },
+      "required": ["id", "organization", "subOrg", "title", "setApart", "isVacant"]
+    },
+    "proposal": {
+      "title": "CallingProposal",
+      "description": "A calling proposal moving through the 4-stage approval workflow or open for council discussion",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "callingId": { "type": "string" },
+        "callingTitle": { "type": "string" },
+        "organization": { "type": "string" },
+        "subOrg": { "type": "string" },
+        "type": { "type": "string" },
+        "currentMemberName": { "type": "string" },
+        "proposedMemberName": { "type": "string" },
+        "proposedByName": { "type": "string" },
+        "reasonNote": { "type": "string" },
+        "dateProposed": { "type": "string" },
+        "approvals": { "type": "object" },
+        "finalStatus": { "type": "string" },
+        "statusHistory": { "type": "array" }
+      },
+      "required": ["id", "callingId", "callingTitle", "organization", "finalStatus"]
+    },
+    "council_message": {
+      "title": "CouncilMessage",
+      "description": "A collaborative message or deliberation posted to a proposal's message board",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "proposalId": { "type": "string" },
+        "callingId": { "type": "string" },
+        "callingTitle": { "type": "string" },
+        "organization": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "authorCalling": { "type": "string" },
+        "authorId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "timestampFormatted": { "type": "string" }
+      },
+      "required": ["id", "proposalId", "authorName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/callings/{callingId}": {
+      "schema": "calling",
+      "description": "Ward calling directory records"
+    },
+    "/proposals/{proposalId}": {
+      "schema": "proposal",
+      "description": "Calling proposals and workflow stage records"
+    },
+    "/council_messages/{messageId}": {
+      "schema": "council_message",
+      "description": "Dedicated Council & Bishopric Message Board records"
+    },
+    "/system_meta/{metaId}": {
+      "schema": "object",
+      "description": "System metadata"
+    }
+  }
+}

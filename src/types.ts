@@ -85,11 +85,27 @@ export interface CallingProposal {
   lcrReferenceNote?: string;
 
   statusHistory: Array<{
+    id?: string;
     date: string;
     action: string;
     actor: string;
     note?: string;
   }>;
+}
+
+export interface CouncilMessage {
+  id: string;
+  proposalId: string;
+  callingId?: string;
+  callingTitle: string;
+  organization?: string;
+  authorName: string;
+  authorRole?: string;
+  authorCalling?: string;
+  authorId?: string;
+  text: string;
+  createdAt: string;
+  timestampFormatted?: string;
 }
 
 export interface Calling {

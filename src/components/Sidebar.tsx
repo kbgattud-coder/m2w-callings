@@ -11,9 +11,8 @@ import {
   RotateCcw, 
   LogOut, 
   X,
-  Cloud,
-  CloudCheck,
-  CloudAlert,
+  Moon,
+  Sun,
   Loader2
 } from 'lucide-react';
 
@@ -47,6 +46,8 @@ interface SidebarProps {
   };
   callingCountByOrg: Record<string, number>;
   syncStatus?: 'connecting' | 'connected' | 'syncing' | 'error';
+  isDarkMode?: boolean;
+  onToggleDarkMode?: () => void;
   onResetData: () => void;
   onLogout: () => void;
   isMobileOpen: boolean;
@@ -62,6 +63,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   metrics,
   callingCountByOrg,
   syncStatus = 'connected',
+  isDarkMode = false,
+  onToggleDarkMode,
   onResetData,
   onLogout,
   isMobileOpen,
@@ -85,18 +88,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {isMobileOpen && (
         <div 
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
         />
       )}
 
       {/* Sticky, Full-Height Modern Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/80 text-slate-700 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen shrink-0 shadow-xs
+        fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 flex flex-col transition-all duration-300 ease-in-out lg:static lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen shrink-0 shadow-xs
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         
         {/* 1. TOP HEADER BRAND LOGO */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="h-10 w-10 rounded-full overflow-hidden shrink-0 shadow-xs flex items-center justify-center bg-blue-600">
               <img 
@@ -108,10 +111,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div>
-              <span className="text-sm font-extrabold text-slate-900 tracking-tight block leading-tight">
+              <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight block leading-tight">
                 Masagana 2nd Ward
               </span>
-              <span className="text-[10px] text-slate-400 font-medium block leading-tight mt-0.5">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block leading-tight mt-0.5">
                 Calling Approvals
               </span>
             </div>
@@ -120,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Close button for mobile menu */}
           <button
             onClick={onCloseMobile}
-            className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -131,9 +134,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           
           {/* Main Views Navigation */}
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 flex items-center justify-between">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-2 flex items-center justify-between">
               <span>Main Navigation</span>
-              <Layers className="w-3.5 h-3.5 text-slate-400" />
+              <Layers className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
             </div>
 
             <nav className="space-y-1">
@@ -142,8 +145,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick('org_chart')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'org_chart' && selectedOrg === 'All Organizations'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -152,8 +155,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   activeTab === 'org_chart' && selectedOrg === 'All Organizations'
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-slate-100 text-slate-600'
+                    ? 'bg-slate-800 dark:bg-blue-700 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                 }`}>
                   {metrics.totalCallings}
                 </span>
@@ -163,8 +166,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick('needs_approval')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'needs_approval'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -172,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>Needs Approval</span>
                 </div>
                 {metrics.pendingApprovalsCount > 0 && (
-                  <span className="bg-blue-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
+                  <span className="bg-blue-600 dark:bg-blue-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
                     {metrics.pendingApprovalsCount}
                   </span>
                 )}
@@ -182,8 +185,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick('needs_set_apart')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'needs_set_apart'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -191,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>Needs Set Apart</span>
                 </div>
                 {metrics.needsSetApartCount > 0 && (
-                  <span className="bg-purple-100 text-purple-700 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                  <span className="bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-bold text-[10px] px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800/80">
                     {metrics.needsSetApartCount}
                   </span>
                 )}
@@ -201,15 +204,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick('consider_review')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'consider_review'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
                   <Clock className="w-4 h-4 text-indigo-500" />
                   <span>Consider Review</span>
                 </div>
-                <span className="bg-slate-100 text-slate-600 font-medium text-[10px] px-2 py-0.5 rounded-full">
+                <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-[10px] px-2 py-0.5 rounded-full">
                   {metrics.longTenureCount + metrics.vacantCount}
                 </span>
               </button>
@@ -218,8 +221,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNavClick('analytics')}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'analytics'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -233,9 +236,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Organizations Filter Section */}
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 flex items-center justify-between">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-2 flex items-center justify-between">
               <span>Organizations</span>
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <Filter className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
             </div>
 
             <nav className="space-y-0.5">
@@ -251,13 +254,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => handleOrgClick(org)}
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       isSelected
-                        ? 'bg-slate-100 text-slate-900 font-bold border border-slate-200/80'
-                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold border border-slate-200/80 dark:border-slate-700'
+                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
                     <span className="truncate pr-2">{org}</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold shrink-0 ${
-                      isSelected ? 'bg-slate-200 text-slate-800' : 'text-slate-400'
+                      isSelected ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
                     }`}>
                       {count}
                     </span>
@@ -269,52 +272,72 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         </div>
 
-        {/* 3. BOTTOM ACCOUNT PROFILE & ACTION FOOTER */}
-        <div className="p-3 bg-slate-50/80 border-t border-slate-200/80 space-y-2">
+        {/* 3. BOTTOM ACCOUNT PROFILE & SETTINGS FOOTER */}
+        <div className="p-3 bg-slate-50/80 dark:bg-slate-950/60 border-t border-slate-200/80 dark:border-slate-800 space-y-2">
           
+          {/* Night Mode / Light Mode Setting Toggle */}
+          {onToggleDarkMode && (
+            <button
+              onClick={onToggleDarkMode}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 transition-colors shadow-2xs"
+            >
+              <div className="flex items-center space-x-2">
+                {isDarkMode ? (
+                  <Moon className="w-3.5 h-3.5 text-blue-400" />
+                ) : (
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                )}
+                <span>{isDarkMode ? 'Night Mode' : 'Light Mode'}</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-medium">
+                {isDarkMode ? 'ON' : 'OFF'}
+              </span>
+            </button>
+          )}
+
           {/* Cloud Database Sync Status Pill */}
-          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/80 border border-slate-200/70 text-[11px]">
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/80 dark:bg-slate-850 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/80 text-[11px]">
             <div className="flex items-center space-x-1.5">
               {syncStatus === 'connected' && (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="font-semibold text-emerald-800">Cloud Live Sync</span>
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-300">Cloud Live Sync</span>
                 </>
               )}
               {syncStatus === 'syncing' && (
                 <>
                   <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-                  <span className="font-semibold text-blue-700">Syncing to Cloud...</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-300">Syncing to Cloud...</span>
                 </>
               )}
               {syncStatus === 'connecting' && (
                 <>
                   <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-                  <span className="font-semibold text-blue-700">Connecting Cloud...</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-300">Connecting Cloud...</span>
                 </>
               )}
               {syncStatus === 'error' && (
                 <>
                   <span className="w-2 h-2 rounded-full bg-rose-500" />
-                  <span className="font-semibold text-rose-700">Offline / Local Mode</span>
+                  <span className="font-semibold text-rose-700 dark:text-rose-300">Offline / Local Mode</span>
                 </>
               )}
             </div>
-            <span className="text-[10px] text-slate-400 font-medium">Firestore</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Firestore</span>
           </div>
 
           {/* User Profile Card */}
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
             <div className="flex items-center space-x-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+              <div className="w-8 h-8 rounded-full bg-slate-900 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
                 {currentUser.name.charAt(0)}
               </div>
 
               <div className="min-w-0">
-                <span className="text-xs font-bold text-slate-900 truncate block leading-tight">
+                <span className="text-xs font-bold text-slate-900 dark:text-white truncate block leading-tight">
                   {currentUser.name}
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium truncate block leading-none mt-0.5">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate block leading-none mt-0.5">
                   {currentUser.calling}
                 </span>
               </div>
@@ -323,7 +346,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Quick Reset Data Button */}
             <button
               onClick={onResetData}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
               title="Reset Ward Data"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -333,7 +356,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Logout Action Button */}
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center space-x-2 py-1.5 px-3 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50/80 hover:bg-rose-100/80 border border-rose-200/60 transition-colors"
+            className="w-full flex items-center justify-center space-x-2 py-1.5 px-3 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100/80 dark:hover:bg-rose-950/70 border border-rose-200/60 dark:border-rose-800/60 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>

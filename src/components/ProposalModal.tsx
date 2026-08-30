@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Calling, BishopricRole, WardMember, ProposalType, AuthUser, CandidateOption } from '../types';
+import { Calling, BishopricRole, WardMember, ProposalType, AuthUser, CandidateOption, CallingProposal } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
 import { sortCallings } from '../utils/callingSort';
-import { X, UserPlus, AlertCircle, RefreshCw, CheckCircle2, Users, Plus, Trash2, HelpCircle } from 'lucide-react';
+import { X, UserPlus, AlertCircle, CheckCircle2, Users, Plus, Trash2, HelpCircle, Star, Sparkles } from 'lucide-react';
 
 interface ProposalModalProps {
   isOpen: boolean;
@@ -12,6 +12,7 @@ interface ProposalModalProps {
   wardMembers: WardMember[];
   activeRole: BishopricRole;
   currentUser?: AuthUser | null;
+  existingProposals?: CallingProposal[];
   onSubmitProposal: (proposalData: {
     callingId: string;
     callingTitle: string;
@@ -35,16 +36,14 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   wardMembers,
   activeRole,
   currentUser,
+  existingProposals = [],
   onSubmitProposal,
 }) => {
   if (!isOpen) return null;
 
   const [selectedCallingId, setSelectedCallingId] = useState<string>(targetCalling?.id || '');
-  const [candidateMode, setCandidateMode] = useState<'single' | 'multiple' | 'open'>('single');
-  const [candidateName, setCandidateName] = useState<string>('');
   const [candidateList, setCandidateList] = useState<Array<{ id: string; name: string; note: string; isLeading: boolean }>>([
     { id: '1', name: '', note: '', isLeading: true },
-    { id: '2', name: '', note: '', isLeading: false },
   ]);
   const [proposingLeaderName, setProposingLeaderName] = useState<string>(
     currentUser ? `${currentUser.name}${currentUser.calling ? ` (${currentUser.calling})` : ''}` : (BISHOPRIC_LEADERS[activeRole]?.name || '')
@@ -54,30 +53,33 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   const currentCalling = allCallings.find(c => c.id === selectedCallingId) || targetCalling;
   const proposalType: ProposalType = currentCalling?.isVacant ? 'fill_vacancy' : 'release_and_replace';
 
-  // Check existing callings for single candidate
-  const singleCandidateCurrentCallings = React.useMemo(() => {
-    if (candidateMode !== 'single' || !candidateName.trim() || candidateName.trim().toLowerCase() === 'to be discussed') return [];
-    return allCallings.filter(c => c.memberName && c.memberName.toLowerCase() === candidateName.trim().toLowerCase());
-  }, [candidateName, allCallings, candidateMode]);
+  // Check if position already has an active proposal in pipeline
+  const activeProposalForCalling = useMemo(() => {
+    if (!currentCalling) return null;
+    return existingProposals.find(p => p.callingId === currentCalling.id && p.finalStatus !== 'declined' && !p.isRecordedInLCR);
+  }, [currentCalling, existingProposals]);
 
-  // Check existing callings for multiple candidates
+  // Check existing callings for candidate names
   const getCandidateExistingCallings = (name: string) => {
-    if (!name.trim()) return [];
+    if (!name.trim() || name.trim().toLowerCase() === 'to be discussed') return [];
     return allCallings.filter(c => c.memberName && c.memberName.toLowerCase() === name.trim().toLowerCase());
   };
 
   const handleAddCandidateRow = () => {
     setCandidateList(prev => [
       ...prev,
-      { id: Date.now().toString(), name: '', note: '', isLeading: false }
+      { id: Date.now().toString(), name: '', note: '', isLeading: prev.length === 0 }
     ]);
   };
 
   const handleRemoveCandidateRow = (id: string) => {
-    if (candidateList.length <= 1) return;
+    if (candidateList.length <= 1) {
+      // Clear the single row instead of removing it
+      setCandidateList([{ id: '1', name: '', note: '', isLeading: true }]);
+      return;
+    }
     setCandidateList(prev => {
       const filtered = prev.filter(c => c.id !== id);
-      // Ensure at least one is leading if there was a leading candidate
       if (filtered.length > 0 && !filtered.some(c => c.isLeading)) {
         filtered[0].isLeading = true;
       }
@@ -104,44 +106,25 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
       return;
     }
 
-    let finalProposedName = '';
+    const filledCandidates = candidateList.filter(c => c.name.trim().length > 0);
+
+    let finalProposedName = 'To be discussed';
     let finalCandidates: CandidateOption[] | undefined = undefined;
     let finalSelectedCandidateId: string | undefined = undefined;
 
-    if (candidateMode === 'open') {
+    if (filledCandidates.length === 0) {
+      // Open discussion mode
       finalProposedName = 'To be discussed';
-    } else if (candidateMode === 'single') {
-      if (!candidateName.trim()) {
-        alert('Please enter a proposed candidate name.');
-        return;
-      }
-      finalProposedName = candidateName.trim();
-      const candId = `cand-${Date.now()}`;
-      finalCandidates = [
-        {
-          id: candId,
-          name: candidateName.trim(),
-          note: reasonNote.trim() || undefined,
-          addedBy: proposingLeaderName.trim(),
-          dateAdded: '2026-07-26',
-          isSelected: true,
-        }
-      ];
-      finalSelectedCandidateId = candId;
+      finalCandidates = undefined;
+      finalSelectedCandidateId = undefined;
     } else {
-      // Multiple candidates mode
-      const validCandidates = candidateList.filter(c => c.name.trim().length > 0);
-      if (validCandidates.length === 0) {
-        alert('Please enter at least one candidate name for discussion.');
-        return;
-      }
+      const leadingCand = filledCandidates.find(c => c.isLeading) || filledCandidates[0];
+      finalProposedName = leadingCand.name.trim();
 
-      const leadingCandidate = validCandidates.find(c => c.isLeading) || validCandidates[0];
-      finalProposedName = leadingCandidate ? leadingCandidate.name.trim() : 'To be discussed (Multiple Candidates)';
-
-      finalCandidates = validCandidates.map((c, index) => {
+      finalCandidates = filledCandidates.map((c, index) => {
         const candId = `cand-${Date.now()}-${index}`;
-        if (c.id === leadingCandidate?.id) {
+        const isSelected = c.id === leadingCand.id;
+        if (isSelected) {
           finalSelectedCandidateId = candId;
         }
         return {
@@ -149,8 +132,8 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           name: c.name.trim(),
           note: c.note.trim() || undefined,
           addedBy: proposingLeaderName.trim(),
-          dateAdded: '2026-07-26',
-          isSelected: c.id === leadingCandidate?.id,
+          dateAdded: new Date().toISOString().split('T')[0],
+          isSelected,
         };
       });
     }
@@ -173,23 +156,23 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full border border-slate-200 shadow-xl overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-8">
         
         {/* Modal Header */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+        <div className="bg-slate-900 dark:bg-slate-950 text-white p-5 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
               <UserPlus className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-base text-white">Propose Calling Recommendation</h3>
-              <p className="text-xs text-slate-400">Propose single candidate, multiple names to discuss, or open vacancy</p>
+              <p className="text-xs text-slate-400">Propose candidate(s) or open a calling for Bishopric deliberation</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -200,17 +183,17 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           
           {/* Target Position Selection */}
           <div>
-            <label className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
+            <label className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block mb-1">
               Select Calling Position:
             </label>
             <select
               value={selectedCallingId}
               onChange={(e) => setSelectedCallingId(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
               <option value="">-- Choose a calling position --</option>
               {sortCallings(allCallings).map((c) => (
-                <option key={c.id} value={c.id}>
+                <option key={c.id} value={c.id} className="dark:bg-slate-800 text-slate-900 dark:text-white">
                   [{c.organization}] {c.title} {c.isVacant ? '(Vacant)' : `(Current: ${c.memberName})`}
                 </option>
               ))}
@@ -218,159 +201,110 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
           </div>
 
           {currentCalling && (
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700">{currentCalling.title}</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{currentCalling.title}</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  currentCalling.isVacant ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                  currentCalling.isVacant 
+                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300' 
+                    : 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300'
                 }`}>
                   {proposalType === 'fill_vacancy' ? 'Filling Vacancy' : 'Release & Replace'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">{currentCalling.organization} • {currentCalling.subOrg}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">{currentCalling.organization} • {currentCalling.subOrg}</p>
               {!currentCalling.isVacant && (
-                <p className="text-xs text-rose-700 font-semibold pt-1">
+                <p className="text-xs text-rose-700 dark:text-rose-400 font-semibold pt-1">
                   Releasing: {currentCalling.memberName}
                 </p>
               )}
             </div>
           )}
 
-          {/* Proposal Strategy Selection Tabs */}
-          <div className="space-y-2 pt-1">
-            <label className="font-bold text-slate-800 uppercase tracking-wider block">
-              Candidate Selection Mode:
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setCandidateMode('single')}
-                className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
-                  candidateMode === 'single'
-                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                1 Candidate
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCandidateMode('multiple')}
-                className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all flex items-center justify-center space-x-1 ${
-                  candidateMode === 'multiple'
-                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Multiple Names</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCandidateMode('open')}
-                className={`p-2.5 rounded-xl border text-center font-bold text-xs transition-all ${
-                  candidateMode === 'open'
-                    ? 'bg-blue-50 border-blue-500 text-blue-950 ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Open Discussion
-              </button>
-            </div>
-          </div>
-
-          {/* 1. SINGLE CANDIDATE INPUT */}
-          {candidateMode === 'single' && (
-            <div className="space-y-2">
-              <label className="font-bold text-slate-800 uppercase tracking-wider block">
-                Proposed Candidate Name:
-              </label>
-              <input
-                type="text"
-                placeholder="Type member name (e.g. Reyes, Francisco)..."
-                value={candidateName}
-                onChange={(e) => setCandidateName(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-              {singleCandidateCurrentCallings.length > 0 && (
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-1">
-                  <div className="flex items-center space-x-1.5 font-bold">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>Candidate currently holds {singleCandidateCurrentCallings.length} calling(s):</span>
-                  </div>
-                  <ul className="list-disc list-inside text-[11px] text-amber-800">
-                    {singleCandidateCurrentCallings.map(c => (
-                      <li key={c.id}><strong>{c.title}</strong> ({c.organization})</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+          {/* Active Proposal Alert if already in pipeline */}
+          {activeProposalForCalling && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 rounded-xl text-amber-900 dark:text-amber-200 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Active Proposal Already in Pipeline</span>
+              </div>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                This calling position is currently undergoing review (Status: <strong>{activeProposalForCalling.finalStatus.replace(/_/g, ' ')}</strong>, Proposed: <strong>{activeProposalForCalling.proposedMemberName}</strong>).
+              </p>
             </div>
           )}
 
-          {/* 2. MULTIPLE CANDIDATES LIST (DISCUSSION POOL) */}
-          {candidateMode === 'multiple' && (
-            <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-slate-800 text-xs block">Candidate Pool for Bishopric Discussion</span>
-                  <span className="text-[11px] text-slate-500">List potential names to compare and discuss during meeting</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddCandidateRow}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg transition-colors flex items-center space-x-1 shadow-2xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Name</span>
-                </button>
+          {/* Dynamic Candidate List (Unified) */}
+          <div className="space-y-3 p-3.5 bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs block">
+                  Candidate(s) for Deliberation
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {candidateList.filter(c => c.name.trim()).length === 0
+                    ? 'Leave empty for open council discussion, or enter one or more candidates'
+                    : 'Select the primary recommendation; additional names will be available for council comparison'}
+                </span>
               </div>
+              <button
+                type="button"
+                onClick={handleAddCandidateRow}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg transition-colors flex items-center space-x-1 shadow-2xs cursor-pointer whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Propose Additional Name</span>
+              </button>
+            </div>
 
-              <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                {candidateList.map((cand, idx) => {
-                  const existingCallings = getCandidateExistingCallings(cand.name);
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              {candidateList.map((cand, idx) => {
+                const existingCallings = getCandidateExistingCallings(cand.name);
+                const isOnlyRow = candidateList.length === 1;
 
-                  return (
-                    <div key={cand.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2 flex-1">
-                          <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
-                          <input
-                            type="text"
-                            placeholder={`Candidate ${idx + 1} Name (e.g. Santos, Juan)...`}
-                            value={cand.name}
-                            onChange={(e) => handleUpdateCandidateRow(cand.id, 'name', e.target.value)}
-                            className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-
-                        {candidateList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveCandidateRow(cand.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                            title="Remove candidate"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
+                return (
+                  <div key={cand.id} className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2 flex-1">
+                        <span className={`w-5 h-5 rounded-full font-bold text-[10px] flex items-center justify-center shrink-0 ${
+                          cand.isLeading && cand.name.trim()
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}>
+                          {idx + 1}
+                        </span>
                         <input
                           type="text"
-                          placeholder="Optional notes / rationale for this candidate..."
-                          value={cand.note}
-                          onChange={(e) => handleUpdateCandidateRow(cand.id, 'note', e.target.value)}
-                          className="flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={idx === 0 ? "Candidate name (or leave empty for Open Discussion)..." : `Alternative candidate ${idx + 1} name...`}
+                          value={cand.name}
+                          onChange={(e) => handleUpdateCandidateRow(cand.id, 'name', e.target.value)}
+                          className="flex-1 p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                         />
-                        
-                        <label className="flex items-center space-x-1 cursor-pointer shrink-0 text-[11px] text-slate-600 font-medium select-none bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200">
+                      </div>
+
+                      {!isOnlyRow && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCandidateRow(cand.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                          title="Remove candidate"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Optional rationale or context for this name..."
+                        value={cand.note}
+                        onChange={(e) => handleUpdateCandidateRow(cand.id, 'note', e.target.value)}
+                        className="flex-1 p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      
+                      {candidateList.length > 1 && (
+                        <label className="flex items-center space-x-1.5 cursor-pointer shrink-0 text-[11px] text-slate-700 dark:text-slate-300 font-medium select-none bg-slate-50 dark:bg-slate-700/60 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600">
                           <input
                             type="radio"
                             name="leadingCandidate"
@@ -380,40 +314,31 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
                           />
                           <span>Primary Choice</span>
                         </label>
-                      </div>
-
-                      {existingCallings.length > 0 && (
-                        <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center space-x-1">
-                          <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                          <span>Currently holds: {existingCallings.map(c => c.title).join(', ')}</span>
-                        </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
-          {/* 3. OPEN DISCUSSION MODE */}
-          {candidateMode === 'open' && (
-            <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-xl text-amber-900 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-xs block text-amber-900">Candidate: To be discussed</span>
-                <span className="text-[11px] text-amber-700">
-                  No specific candidate names entered yet. You and the Bishopric can propose and compare names directly in the Approvals queue.
-                </span>
-              </div>
-              <span className="text-[10px] font-bold uppercase bg-amber-200/70 text-amber-900 px-2.5 py-1 rounded-md shrink-0 flex items-center space-x-1">
-                <HelpCircle className="w-3 h-3" />
-                <span>Open Pool</span>
-              </span>
+                    {existingCallings.length > 0 && (
+                      <div className="text-[10px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800/60 flex items-center space-x-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>Currently holds {existingCallings.length} calling(s): {existingCallings.map(c => c.title).join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
+
+            {candidateList.every(c => !c.name.trim()) && (
+              <div className="p-2.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 flex items-center space-x-2">
+                <HelpCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>No candidate entered. This proposal will be submitted as an <strong>Open Discussion</strong> calling for council deliberations.</span>
+              </div>
+            )}
+          </div>
 
           {/* Proposer Leader Name Field */}
           <div>
-            <label className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
+            <label className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block mb-1">
               Proposing Leader:
             </label>
             <input
@@ -421,36 +346,36 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
               placeholder="Enter proposing leader name (e.g. Relief Society President, Elders Quorum President, etc.)..."
               value={proposingLeaderName}
               onChange={(e) => setProposingLeaderName(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
           {/* General Recommendation Context / Note */}
           <div>
-            <label className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
+            <label className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block mb-1">
               General Recommendation Context / Note:
             </label>
             <textarea
               rows={2}
-              placeholder="Provide background context on why this position is being filled..."
+              placeholder="Provide background context on why this position is being filled or released..."
               value={reasonNote}
               onChange={(e) => setReasonNote(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-sm flex items-center space-x-1.5"
+              className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Submit for 3-Point Approval</span>
@@ -463,4 +388,3 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({
     </div>
   );
 };
-

@@ -92,7 +92,8 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
         p.finalStatus === 'pending_review' || 
         p.finalStatus === 'for_interview' || 
         p.finalStatus === 'for_sustaining' || 
-        p.finalStatus === 'approved_for_action'
+        p.finalStatus === 'approved_for_action' ||
+        (p.finalStatus === 'for_recording' && !p.isRecordedInLCR)
       ) {
         map.set(p.callingId, p);
       }
@@ -141,20 +142,20 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
   }, [callings, selectedOrg, filterStatus, searchQuery, proposalsMap]);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-3.5 sm:p-5 space-y-4 transition-colors">
       
       {/* Top Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
         <div>
           <div className="flex items-center space-x-2">
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
               {selectedOrg === 'All Organizations' || selectedOrg === 'All' ? 'Callings Directory' : `${selectedOrg}`}
             </h3>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-semibold">
+            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-0.5 rounded-full font-semibold border border-slate-200/60 dark:border-slate-700">
               {filteredCallings.length}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 dark:text-slate-400 mt-0.5">
             Overview of ward organizations, position holders, tenure, and setting apart status.
           </p>
         </div>
@@ -163,31 +164,31 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           
           {/* Search Input */}
-          <div className="relative min-w-[200px]">
+          <div className="relative min-w-[180px] sm:min-w-[200px] flex-1 sm:flex-initial">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Search calling or member..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
 
           {/* Filter Status Selector */}
-          <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+          <div className="flex items-center space-x-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-xs">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as CallingFilterStatus)}
-              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
             >
-              <option value="all">All Callings</option>
-              <option value="vacant">Vacant Positions</option>
-              <option value="filled">Filled Positions</option>
-              <option value="needs_set_apart">Needs Setting Apart</option>
-              <option value="long_tenure">Serving 3+ Years</option>
-              <option value="has_proposal">Pending Proposal</option>
+              <option value="all" className="dark:bg-slate-800">All Callings</option>
+              <option value="vacant" className="dark:bg-slate-800">Vacant Positions</option>
+              <option value="filled" className="dark:bg-slate-800">Filled Positions</option>
+              <option value="needs_set_apart" className="dark:bg-slate-800">Needs Setting Apart</option>
+              <option value="long_tenure" className="dark:bg-slate-800">Serving 3+ Years</option>
+              <option value="has_proposal" className="dark:bg-slate-800">Pending Proposal</option>
             </select>
           </div>
 
@@ -195,11 +196,11 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
           {isAdmin && onOpenDirectEdit && (
             <button
               onClick={() => onOpenDirectEdit()}
-              className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-2xs"
+              className="flex items-center space-x-1.5 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-2xs"
               title="Manually assign or edit calling directly without approval queue"
               id="btn-admin-direct-entry"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400 dark:text-blue-200" />
               <span>Direct Entry</span>
             </button>
           )}
@@ -217,11 +218,11 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
           )}
 
           {/* View Mode Toggle */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/60">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-700">
             <button
               onClick={() => setViewMode('table')}
               className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-700'
+                viewMode === 'table' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
               title="Table View"
             >
@@ -230,7 +231,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
             <button
               onClick={() => setViewMode('grid')}
               className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === 'grid' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-700'
+                viewMode === 'grid' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
               title="Grid View"
             >
@@ -243,10 +244,10 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
           <table className="w-full min-w-[760px] text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
+              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
                 <th className="py-3 px-4 font-bold">Calling Title</th>
                 <th className="py-3 px-4 font-bold">Organization</th>
                 <th className="py-3 px-4 font-bold">Current Holder</th>
@@ -255,38 +256,38 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                 <th className="py-3 px-4 font-bold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100/80">
+            <tbody className="divide-y divide-slate-100/80 dark:divide-slate-800">
               {filteredCallings.map((calling) => {
                 const tenure = calculateTenure(calling.sustainedDate);
                 const activeProposal = proposalsMap.get(calling.id);
 
                 return (
-                  <tr key={calling.id} className="hover:bg-slate-50/70 transition-colors group">
+                  <tr key={calling.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors group">
                     
                     {/* Title */}
                     <td className="py-3.5 px-4">
                       <div 
                         onClick={() => onSelectCalling(calling)}
-                        className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer text-xs leading-snug"
+                        className="font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer text-xs leading-snug"
                       >
                         {calling.title}
                       </div>
                     </td>
 
                     {/* Organization */}
-                    <td className="py-3.5 px-4 text-slate-500 font-medium text-[11px] whitespace-nowrap">
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-medium text-[11px] whitespace-nowrap">
                       {calling.organization}
-                      <span className="text-slate-400 text-[10px] block font-normal">{calling.subOrg}</span>
+                      <span className="text-slate-400 dark:text-slate-500 text-[10px] block font-normal">{calling.subOrg}</span>
                     </td>
 
                     {/* Current Holder */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       {calling.isVacant ? (
-                        <span className="text-amber-700 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded">
+                        <span className="text-amber-700 dark:text-amber-300 font-semibold text-[11px] bg-amber-50 dark:bg-amber-950/60 border border-amber-200/60 dark:border-amber-800/60 px-2 py-0.5 rounded">
                           Vacant Position
                         </span>
                       ) : (
-                        <span className="font-semibold text-slate-800">{calling.memberName}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{calling.memberName}</span>
                       )}
                     </td>
 
@@ -299,7 +300,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                             e.stopPropagation();
                             setPreviewProposal(activeProposal);
                           }}
-                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 px-2.5 py-1 rounded-full border border-blue-200/80 transition-all cursor-pointer shadow-2xs group/pill text-left"
+                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:border-blue-300 dark:hover:border-blue-700 px-2.5 py-1 rounded-full border border-blue-200/80 dark:border-blue-800/80 transition-all cursor-pointer shadow-2xs group/pill text-left"
                           title="Click to view proposed candidates, status, and bishopric sign-offs"
                           id={`btn-proposal-pill-${calling.id}`}
                         >
@@ -308,21 +309,21 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                           <Eye className="w-3 h-3 text-blue-500 opacity-60 group-hover/pill:opacity-100 transition-opacity ml-0.5" />
                         </button>
                       ) : calling.isVacant ? (
-                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 whitespace-nowrap">
+                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-full border border-amber-200/60 dark:border-amber-800/60 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
                           <span>Vacant</span>
                         </span>
                       ) : !calling.setApart ? (
                         <button
                           onClick={() => onToggleSetApart(calling.id)}
-                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-full border border-purple-200/60 transition-colors whitespace-nowrap cursor-pointer"
+                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 px-2.5 py-1 rounded-full border border-purple-200/60 dark:border-purple-800/60 transition-colors whitespace-nowrap cursor-pointer"
                           title="Click to mark set apart"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0"></span>
                           <span>Needs Setting Apart</span>
                         </button>
                       ) : (
-                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60 whitespace-nowrap">
+                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-200/60 dark:border-emerald-800/60 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                           <span>Sustained &amp; Set Apart</span>
                         </span>
@@ -330,14 +331,14 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     </td>
 
                     {/* Tenure */}
-                    <td className="py-3.5 px-4 text-slate-500 text-[11px] whitespace-nowrap">
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
                       {!calling.isVacant ? (
                         <div>
-                          <span className="font-semibold text-slate-700 block">{tenure.displayText}</span>
-                          <span className="text-[10px] text-slate-400">{formatDateForDisplay(calling.sustainedDate)}</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-200 block">{tenure.displayText}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatDateForDisplay(calling.sustainedDate)}</span>
                         </div>
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-slate-300 dark:text-slate-600">—</span>
                       )}
                     </td>
 
@@ -350,7 +351,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenDirectEdit(calling)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
+                            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors border border-slate-200 dark:border-slate-700"
                             title="Direct edit / assign this calling"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -361,24 +362,34 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                           <button
                             type="button"
                             onClick={() => onDeleteCalling(calling.id, calling.title)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
                             title="Delete this vacant calling"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
 
-                        {calling.isVacant ? (
+                        {activeProposal ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewProposal(activeProposal)}
+                            className="bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold text-[11px] px-2.5 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 transition-colors shadow-2xs whitespace-nowrap flex items-center space-x-1 cursor-pointer"
+                            title="Click to view proposal progress and candidates"
+                          >
+                            <Eye className="w-3 h-3 text-blue-500" />
+                            <span>In Progress</span>
+                          </button>
+                        ) : calling.isVacant ? (
                           <button
                             onClick={() => onProposeForCalling(calling)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] px-3 py-1.5 rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] px-3 py-1.5 rounded-xl transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
                           >
                             Propose Member
                           </button>
                         ) : (
                           <button
                             onClick={() => onProposeForCalling(calling)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] px-3 py-1.5 rounded-xl transition-colors border border-slate-200/80 whitespace-nowrap"
+                            className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-[11px] px-3 py-1.5 rounded-xl transition-colors border border-slate-200/80 dark:border-slate-700 whitespace-nowrap cursor-pointer"
                           >
                             Propose Release
                           </button>
@@ -404,17 +415,17 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
             return (
               <div
                 key={calling.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-4 transition-all duration-200 hover:shadow-md flex flex-col justify-between"
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 p-4 transition-all duration-200 hover:shadow-md dark:hover:border-slate-600 shadow-xs flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium mb-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-400 font-medium mb-1.5">
                     <span>{calling.organization} • {calling.subOrg}</span>
                     <div className="flex items-center space-x-1">
                       {isAdmin && onOpenDirectEdit && (
                         <button
                           type="button"
                           onClick={() => onOpenDirectEdit(calling)}
-                          className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-slate-100 transition-colors"
+                          className="text-slate-400 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-300 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                           title="Direct edit calling"
                         >
                           <Edit3 className="w-3 h-3" />
@@ -427,7 +438,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                             e.stopPropagation();
                             setPreviewProposal(activeProposal);
                           }}
-                          className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 border border-blue-200 px-2 py-0.5 rounded-full transition-colors flex items-center space-x-1 cursor-pointer"
+                          className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:border-blue-300 dark:hover:border-blue-700 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-full transition-colors flex items-center space-x-1 cursor-pointer"
                           title="Click to view proposed candidates and consensus status"
                           id={`btn-grid-proposal-pill-${calling.id}`}
                         >
@@ -441,40 +452,40 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
 
                   <h4 
                     onClick={() => onSelectCalling(calling)}
-                    className="font-bold text-slate-900 text-sm hover:text-blue-600 cursor-pointer transition-colors leading-snug"
+                    className="font-bold text-slate-900 dark:text-white text-sm hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors leading-snug"
                   >
                     {calling.title}
                   </h4>
 
                   <div className="mt-3">
                     {calling.isVacant ? (
-                      <span className="inline-flex items-center space-x-1 text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60">
+                      <span className="inline-flex items-center space-x-1 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200/60 dark:border-amber-800/60">
                         <UserX className="w-3.5 h-3.5" />
                         <span>Position Vacant</span>
                       </span>
                     ) : (
-                      <div className="text-slate-800 text-xs font-semibold">
+                      <div className="text-slate-800 dark:text-slate-200 text-xs font-semibold">
                         <span>{calling.memberName}</span>
                       </div>
                     )}
                   </div>
 
                   {!calling.isVacant && (
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                      <span>Serving: <strong className="text-slate-800">{tenure.displayText}</strong></span>
-                      <span className="text-[10px] text-slate-400">{formatDateForDisplay(calling.sustainedDate)}</span>
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span>Serving: <strong className="text-slate-800 dark:text-slate-200">{tenure.displayText}</strong></span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatDateForDisplay(calling.sustainedDate)}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                   {!calling.isVacant ? (
                     <button
                       onClick={() => onToggleSetApart(calling.id)}
                       className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
                         calling.setApart
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                          : 'bg-purple-50 border-purple-200 text-purple-700 font-semibold'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-800/80 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-purple-50 dark:bg-purple-950/70 border-purple-200 dark:border-purple-800/80 text-purple-700 dark:text-purple-300 font-semibold'
                       }`}
                     >
                       {calling.setApart ? '• Set Apart' : '• Needs Set Apart'}
@@ -485,7 +496,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                         <button
                           type="button"
                           onClick={() => onDeleteCalling(calling.id, calling.title)}
-                          className="text-[11px] text-slate-400 hover:text-rose-600 font-medium flex items-center space-x-1 p-1 rounded hover:bg-rose-50 transition-colors"
+                          className="text-[11px] text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 font-medium flex items-center space-x-1 p-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                           title="Delete this vacant calling position"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -495,12 +506,24 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     </div>
                   )}
 
-                  <button
-                    onClick={() => onProposeForCalling(calling)}
-                    className="ml-auto bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1 rounded-lg border border-slate-200 transition-colors"
-                  >
-                    {calling.isVacant ? 'Propose Member' : 'Propose Release'}
-                  </button>
+                  {activeProposal ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewProposal(activeProposal)}
+                      className="ml-auto bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 transition-colors flex items-center space-x-1 cursor-pointer"
+                      title="Click to view proposal progress and candidates"
+                    >
+                      <Eye className="w-3 h-3 text-blue-500" />
+                      <span>In Progress</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onProposeForCalling(calling)}
+                      className="ml-auto bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                    >
+                      {calling.isVacant ? 'Propose Member' : 'Propose Release'}
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -511,9 +534,9 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
 
       {filteredCallings.length === 0 && (
         <div className="p-8 text-center space-y-2">
-          <UserX className="w-8 h-8 text-slate-300 mx-auto" />
-          <h3 className="text-sm font-bold text-slate-700">No Callings Found</h3>
-          <p className="text-xs text-slate-400">Try adjusting your search query or selecting another organization.</p>
+          <UserX className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Callings Found</h3>
+          <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your search query or selecting another organization.</p>
         </div>
       )}
 

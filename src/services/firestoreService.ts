@@ -11,11 +11,12 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Calling, CallingProposal } from '../types';
+import { Calling, CallingProposal, CouncilMessage } from '../types';
 import { INITIAL_CALLINGS, INITIAL_PROPOSALS } from '../data/initialData';
 
 const CALLINGS_COLLECTION = 'callings';
 const PROPOSALS_COLLECTION = 'proposals';
+const MESSAGES_COLLECTION = 'council_messages';
 const METADATA_COLLECTION = 'system_meta';
 
 // Helper to remove undefined fields which Firestore does not allow
@@ -145,8 +146,8 @@ export function subscribeToCallings(
 }
 
 /**
- * Subscribe to real-time Proposals updates
- */
+  * Subscribe to real-time Proposals updates
+  */
 export function subscribeToProposals(
   onUpdate: (proposals: CallingProposal[]) => void,
   onError?: (error: Error) => void
@@ -159,7 +160,15 @@ export function subscribeToProposals(
       const loadedProposals: CallingProposal[] = [];
       snapshot.forEach((docSnap) => {
         const raw = docSnap.data() as Partial<CallingProposal>;
+        const history = Array.isArray(raw.statusHistory)
+          ? raw.statusHistory.map((h, idx) => ({
+              ...h,
+              id: h.id || `h-${docSnap.id}-${idx}-${h.date || 'entry'}`
+            }))
+          : [];
+
         const sanitized: CallingProposal = {
+          ...raw,
           id: docSnap.id,
           callingId: raw.callingId || '',
           callingTitle: raw.callingTitle || 'Calling',
@@ -179,7 +188,7 @@ export function subscribeToProposals(
             second_counselor: { status: raw.approvals?.second_counselor?.status || 'pending', ...(raw.approvals?.second_counselor || {}) },
           },
           finalStatus: raw.finalStatus || 'pending_review',
-          statusHistory: raw.statusHistory || [],
+          statusHistory: history,
         };
         loadedProposals.push(sanitized);
       });
@@ -190,6 +199,98 @@ export function subscribeToProposals(
       if (onError) onError(error);
     }
   );
+}
+
+/**
+  * Subscribe to real-time Council Message Board updates
+  */
+export function subscribeToCouncilMessages(
+  onUpdate: (messages: CouncilMessage[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const messagesQuery = query(collection(db, MESSAGES_COLLECTION));
+
+  return onSnapshot(
+    messagesQuery,
+    (snapshot) => {
+      const loadedMessages: CouncilMessage[] = [];
+      snapshot.forEach((docSnap) => {
+        const raw = docSnap.data() as Partial<CouncilMessage>;
+        loadedMessages.push({
+          id: docSnap.id,
+          proposalId: raw.proposalId || '',
+          callingId: raw.callingId,
+          callingTitle: raw.callingTitle || 'Calling',
+          organization: raw.organization || '',
+          authorName: raw.authorName || 'Leader',
+          authorRole: raw.authorRole || 'Council Member',
+          authorCalling: raw.authorCalling,
+          authorId: raw.authorId,
+          text: raw.text || '',
+          createdAt: raw.createdAt || new Date().toISOString(),
+          timestampFormatted: raw.timestampFormatted,
+        });
+      });
+
+      // Sort by creation date ascending (oldest to newest)
+      loadedMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      onUpdate(loadedMessages);
+    },
+    (error) => {
+      console.error('Firestore Council Messages onSnapshot error:', error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
+ * Save a new or edited Council Message to Firestore
+ */
+export async function saveCouncilMessageToFirestore(message: CouncilMessage): Promise<void> {
+  try {
+    const msgRef = doc(db, MESSAGES_COLLECTION, message.id);
+    await setDoc(msgRef, cleanForFirestore(message), { merge: true });
+  } catch (error) {
+    console.error('Error saving council message to Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a specific Council Message from Firestore
+ */
+export async function deleteCouncilMessageFromFirestore(messageId: string): Promise<void> {
+  try {
+    const msgRef = doc(db, MESSAGES_COLLECTION, messageId);
+    await deleteDoc(msgRef);
+  } catch (error) {
+    console.error('Error deleting council message from Firestore:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear all Council Messages for a given proposal
+ */
+export async function clearProposalCouncilMessages(proposalId: string): Promise<void> {
+  try {
+    const messagesSnap = await getDocs(collection(db, MESSAGES_COLLECTION));
+    const batch = writeBatch(db);
+    let count = 0;
+    messagesSnap.forEach((docSnap) => {
+      const data = docSnap.data() as Partial<CouncilMessage>;
+      if (data.proposalId === proposalId) {
+        batch.delete(docSnap.ref);
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error('Error clearing proposal messages in Firestore:', error);
+    throw error;
+  }
 }
 
 /**
