@@ -41,7 +41,8 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { ProposalModal } from './components/ProposalModal';
 import { CallingDetailModal } from './components/CallingDetailModal';
 import { AddCustomCallingModal } from './components/AddCustomCallingModal';
-import { calculateTenure } from './utils/tenure';
+import { ManualCallingModal } from './components/ManualCallingModal';
+import { calculateTenure, getTodayDateString } from './utils/tenure';
 import { sortCallings } from './utils/callingSort';
 
 const STORAGE_KEYS = {
@@ -116,6 +117,8 @@ export default function App() {
   const [proposalTargetCalling, setProposalTargetCalling] = useState<Calling | null>(null);
   const [selectedCallingDetail, setSelectedCallingDetail] = useState<Calling | null>(null);
   const [isAddCustomModalOpen, setIsAddCustomModalOpen] = useState(false);
+  const [isManualCallingModalOpen, setIsManualCallingModalOpen] = useState(false);
+  const [manualCallingTarget, setManualCallingTarget] = useState<Calling | null>(null);
 
   // 1. Setup Firestore Real-time Subscriptions & Cloud Sync
   useEffect(() => {
@@ -327,7 +330,7 @@ export default function App() {
     if (!prop) return;
 
     const actorLeader = BISHOPRIC_LEADERS[role] || { title: 'Leader', name: 'Leader', shortName: 'Leader' };
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
 
     const currentApprovals = prop.approvals || {
       bishop: { status: 'pending' },
@@ -405,7 +408,7 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser 
       ? (currentUser.isSuperAdmin ? `${currentUser.name} (Super Admin)` : `${currentUser.name} (${currentUser.calling})`)
       : 'Super Admin';
@@ -492,7 +495,7 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
 
     const updatedApprovals = {
       bishop: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
@@ -535,7 +538,7 @@ export default function App() {
     const candidate = prop.candidates?.find(c => c.id === candidateId);
     if (!candidate) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
     const updatedCandidates = (prop.candidates || []).map(c => ({
@@ -576,7 +579,7 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
     const newCandidate: CandidateOption = {
@@ -629,7 +632,7 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop || !prop.candidates) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
     const removed = prop.candidates.find(c => c.id === candidateId);
@@ -685,7 +688,7 @@ export default function App() {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
     const newCandId = `cand-${Date.now()}`;
@@ -737,7 +740,8 @@ export default function App() {
       return;
     }
 
-    const todayStr = '26 Jul 2026';
+    const todayStr = getTodayDateString();
+    const todayIso = new Date().toISOString().split('T')[0];
     const targetCalling = callings.find(c => c.id === proposal.callingId);
     if (!targetCalling) return;
 
@@ -757,7 +761,7 @@ export default function App() {
       statusHistory: [
         ...proposal.statusHistory,
         {
-          date: '2026-07-26',
+          date: todayIso,
           action: 'Calling sustained in Ward Meeting',
           actor: currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name,
         }
@@ -782,6 +786,93 @@ export default function App() {
     }
 
     alert(`Successfully recorded: ${proposal.proposedMemberName} sustained as ${proposal.callingTitle}!`);
+  };
+
+  // Open Direct Calling Edit Modal (Admin bypass)
+  const handleOpenDirectEdit = (calling?: Calling) => {
+    setManualCallingTarget(calling || null);
+    setIsManualCallingModalOpen(true);
+  };
+
+  // Admin Direct Update Calling (Bypasses proposal queue or syncs directly)
+  const handleDirectUpdateCalling = async (callingId: string, updates: {
+    memberName: string | null;
+    sustainedDate: string | null;
+    setApart: boolean;
+    isVacant: boolean;
+    note?: string;
+  }) => {
+    const targetCalling = callings.find(c => c.id === callingId);
+    if (!targetCalling) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Administrator';
+
+    const updatedCalling: Calling = {
+      ...targetCalling,
+      memberName: updates.isVacant ? null : updates.memberName,
+      sustainedDate: updates.isVacant ? null : (updates.sustainedDate || null),
+      setApart: updates.isVacant ? false : updates.setApart,
+      isVacant: updates.isVacant,
+    };
+
+    // Check if there's an active proposal for this position
+    const matchingProposal = proposals.find(
+      p => p.callingId === callingId && (p.finalStatus === 'pending_review' || p.finalStatus === 'approved_for_action')
+    );
+
+    let updatedProposal: CallingProposal | null = null;
+    if (matchingProposal && !updates.isVacant && updates.memberName) {
+      updatedProposal = {
+        ...matchingProposal,
+        proposedMemberName: updates.memberName,
+        finalStatus: 'sustained',
+        statusHistory: [
+          ...(matchingProposal.statusHistory || []),
+          {
+            date: todayIso,
+            action: 'Direct manual calling assignment by administrator',
+            actor: actorName,
+            note: updates.note || 'Calling assigned directly in ward directory',
+          }
+        ]
+      };
+    }
+
+    // Update state immediately
+    setCallings(prev => sortCallings(prev.map(c => c.id === callingId ? updatedCalling : c)));
+    if (updatedProposal) {
+      setProposals(prev => prev.map(p => p.id === updatedProposal!.id ? updatedProposal! : p));
+    }
+    if (selectedCallingDetail && selectedCallingDetail.id === callingId) {
+      setSelectedCallingDetail(updatedCalling);
+    }
+
+    setSyncStatus('syncing');
+    try {
+      await saveCallingToFirestore(updatedCalling);
+      if (updatedProposal) {
+        await saveProposalToFirestore(updatedProposal);
+      }
+      setSyncStatus('connected');
+    } catch (err) {
+      console.error('Failed to sync direct calling update to Firestore:', err);
+      setSyncStatus('error');
+    }
+  };
+
+  // Admin Direct Release Member from Calling (Immediate vacancy)
+  const handleDirectReleaseCalling = async (callingId: string) => {
+    const targetCalling = callings.find(c => c.id === callingId);
+    if (!targetCalling) return;
+
+    await handleDirectUpdateCalling(callingId, {
+      memberName: null,
+      sustainedDate: null,
+      setApart: false,
+      isVacant: true,
+      note: `Released ${targetCalling.memberName || 'member'} from ${targetCalling.title} directly`,
+    });
   };
 
   // Create New Calling Proposal
@@ -1021,7 +1112,9 @@ export default function App() {
               onToggleSetApart={handleToggleSetApart}
               onSelectCalling={setSelectedCallingDetail}
               onOpenAddCustomCalling={() => setIsAddCustomModalOpen(true)}
+              onOpenDirectEdit={handleOpenDirectEdit}
               onDeleteCalling={handleDeleteCalling}
+              currentUser={currentUser}
             />
           )}
 
@@ -1106,6 +1199,8 @@ export default function App() {
         onClose={() => setSelectedCallingDetail(null)}
         onProposeForCalling={handleOpenProposeForCalling}
         onToggleSetApart={handleToggleSetApart}
+        onDirectEditCalling={handleOpenDirectEdit}
+        onDirectReleaseCalling={handleDirectReleaseCalling}
         onDeleteCalling={handleDeleteCalling}
         onDeleteProposal={handleDeleteProposal}
         onResetProposal={handleResetProposal}
@@ -1117,6 +1212,19 @@ export default function App() {
         defaultOrg={selectedOrg}
         wardMembers={allMembers}
         onAddCalling={handleAddCustomCalling}
+      />
+
+      <ManualCallingModal
+        isOpen={isManualCallingModalOpen}
+        onClose={() => {
+          setIsManualCallingModalOpen(false);
+          setManualCallingTarget(null);
+        }}
+        calling={manualCallingTarget}
+        allCallings={callings}
+        proposals={proposals}
+        onSaveCalling={handleDirectUpdateCalling}
+        currentUser={currentUser}
       />
 
     </div>

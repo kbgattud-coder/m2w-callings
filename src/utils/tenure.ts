@@ -2,36 +2,90 @@
  * Tenure utility functions for Church Calling Approvals
  */
 
-// Parse dates like "3 Apr 2022", "2022-04-03", "16 Apr 2023"
+// Format today's date as "29 Aug 2026"
+export function getTodayDateString(): string {
+  const now = new Date();
+  const day = now.getDate();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[now.getMonth()];
+  const year = now.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+// Parse various date strings accurately
 export function parseSustainedDate(dateStr: string | null): Date | null {
   if (!dateStr || dateStr.toLowerCase().includes('vacant')) return null;
-  
-  const parsed = new Date(dateStr);
-  if (!isNaN(parsed.getTime())) return parsed;
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
 
-  // Fallback custom parse for "3 Apr 2022" or "28 Jun 2026"
-  const parts = dateStr.trim().split(/\s+/);
+  // 1. Check YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10) - 1;
+    const day = parseInt(isoMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 2. Check DD/MM/YYYY or MM/DD/YYYY
+  const slashMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (slashMatch) {
+    const p1 = parseInt(slashMatch[1], 10);
+    const p2 = parseInt(slashMatch[2], 10);
+    const year = parseInt(slashMatch[3], 10);
+    // If p1 > 12, it's definitely DD/MM/YYYY
+    if (p1 > 12) {
+      return new Date(year, p2 - 1, p1);
+    }
+    // Default to DD/MM/YYYY in Philippines context, or check standard
+    return new Date(year, p2 - 1, p1);
+  }
+
+  // 3. Fallback custom parse for "3 Apr 2022", "12 Jul 2026", "29 August 2026"
+  const monthsMap: Record<string, number> = {
+    jan: 0, january: 0,
+    feb: 1, february: 1,
+    mar: 2, march: 2,
+    apr: 3, april: 3,
+    may: 4,
+    jun: 5, june: 5,
+    jul: 6, july: 6,
+    aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8,
+    oct: 9, october: 9,
+    nov: 10, november: 10,
+    dec: 11, december: 11
+  };
+
+  const parts = trimmed.replace(/,/g, '').split(/\s+/);
   if (parts.length === 3) {
-    const day = parseInt(parts[0], 10);
-    const monthStr = parts[1];
-    const year = parseInt(parts[2], 10);
+    // Format: "12 Jul 2026" (DD Month YYYY)
+    const dayAsFirst = parseInt(parts[0], 10);
+    const monthKeyFirst = parts[1].toLowerCase();
+    const yearLast = parseInt(parts[2], 10);
     
-    const monthsMap: Record<string, number> = {
-      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
-    };
-    
-    const monthKey = monthStr.substring(0, 3).toLowerCase();
-    if (monthsMap[monthKey] !== undefined && !isNaN(day) && !isNaN(year)) {
-      return new Date(year, monthsMap[monthKey], day);
+    if (!isNaN(dayAsFirst) && monthsMap[monthKeyFirst] !== undefined && !isNaN(yearLast)) {
+      return new Date(yearLast, monthsMap[monthKeyFirst], dayAsFirst);
+    }
+
+    // Format: "Jul 12 2026" (Month DD YYYY)
+    const monthKeySecond = parts[0].toLowerCase();
+    const dayAsSecond = parseInt(parts[1], 10);
+    if (monthsMap[monthKeySecond] !== undefined && !isNaN(dayAsSecond) && !isNaN(yearLast)) {
+      return new Date(yearLast, monthsMap[monthKeySecond], dayAsSecond);
     }
   }
+
+  // 4. Standard JS date parser
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) return parsed;
 
   return null;
 }
 
-// Calculate tenure relative to current date (or July 26, 2026 reference date)
-export function calculateTenure(sustainedDateStr: string | null, referenceDate: Date = new Date('2026-07-26')): {
+// Calculate tenure relative to current date (dynamic new Date())
+export function calculateTenure(sustainedDateStr: string | null, referenceDate?: Date): {
   years: number;
   months: number;
   totalMonths: number;
@@ -59,17 +113,40 @@ export function calculateTenure(sustainedDateStr: string | null, referenceDate: 
     };
   }
 
-  const ref = referenceDate;
+  const ref = referenceDate ? new Date(referenceDate) : new Date();
   
-  let years = ref.getFullYear() - startDate.getFullYear();
-  let months = ref.getMonth() - startDate.getMonth();
-  
-  if (months < 0 || (months === 0 && ref.getDate() < startDate.getDate())) {
-    years--;
-    months += 12;
+  // Normalize time components for clean day/month comparison
+  startDate.setHours(0, 0, 0, 0);
+  ref.setHours(0, 0, 0, 0);
+
+  // If start date is in the future or today
+  if (startDate.getTime() >= ref.getTime()) {
+    return {
+      years: 0,
+      months: 0,
+      totalMonths: 0,
+      displayText: 'New (< 1 mo)',
+      badgeColor: 'green',
+    };
   }
 
-  const totalMonths = years * 12 + months;
+  let totalMonths = (ref.getFullYear() - startDate.getFullYear()) * 12 + (ref.getMonth() - startDate.getMonth());
+  if (ref.getDate() < startDate.getDate()) {
+    totalMonths--;
+  }
+
+  if (totalMonths <= 0) {
+    return {
+      years: 0,
+      months: 0,
+      totalMonths: 0,
+      displayText: 'New (< 1 mo)',
+      badgeColor: 'green',
+    };
+  }
+
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths % 12;
 
   let displayText = '';
   if (years > 0 && months > 0) {
@@ -79,14 +156,13 @@ export function calculateTenure(sustainedDateStr: string | null, referenceDate: 
   } else if (months > 0) {
     displayText = `${months} mo${months > 1 ? 's' : ''}`;
   } else {
-    displayText = 'Less than a month';
+    displayText = 'New (< 1 mo)';
   }
 
   // Color badges based on length of service
-  // < 6 months: green (New)
-  // 6 - 24 months: green/neutral (Active)
+  // < 24 months (< 2 yrs): green (Active / Normal)
   // 24 - 36 months (2-3 yrs): amber (Review suggested)
-  // > 36 months (3+ yrs): purple/amber (Long service)
+  // >= 36 months (3+ yrs): purple (Long service)
   let badgeColor: 'gray' | 'green' | 'amber' | 'purple' = 'green';
   if (totalMonths >= 36) {
     badgeColor = 'purple';

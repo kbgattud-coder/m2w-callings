@@ -19,7 +19,9 @@ import {
   Building2,
   MoreHorizontal,
   Trash2,
-  Plus
+  Plus,
+  Edit3,
+  ShieldCheck
 } from 'lucide-react';
 
 interface OrgChartDirectoryProps {
@@ -31,8 +33,15 @@ interface OrgChartDirectoryProps {
   onToggleSetApart: (callingId: string) => void;
   onSelectCalling: (calling: Calling) => void;
   onOpenAddCustomCalling?: () => void;
+  onOpenDirectEdit?: (calling?: Calling) => void;
   onDeleteCalling?: (callingId: string, callingTitle: string) => void;
   initialFilterStatus?: CallingFilterStatus;
+  currentUser?: {
+    isSuperAdmin?: boolean;
+    role?: string;
+    name?: string;
+    calling?: string;
+  };
 }
 
 export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
@@ -44,12 +53,21 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
   onToggleSetApart,
   onSelectCalling,
   onOpenAddCustomCalling,
+  onOpenDirectEdit,
   onDeleteCalling,
-  initialFilterStatus = 'all'
+  initialFilterStatus = 'all',
+  currentUser,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<CallingFilterStatus>(initialFilterStatus);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  const isAdmin = currentUser?.isSuperAdmin || 
+    currentUser?.role === 'bishop' || 
+    currentUser?.role === 'first_counselor' || 
+    currentUser?.role === 'second_counselor' || 
+    currentUser?.role === 'clerk' || 
+    currentUser?.role === 'exec_sec';
 
   // Map proposals to callings for quick lookup
   const proposalsMap = useMemo(() => {
@@ -105,7 +123,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
       
-      {/* Top Header Bar (Matching Reference Activity Section) */}
+      {/* Top Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
         <div>
           <div className="flex items-center space-x-2">
@@ -121,7 +139,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
           </p>
         </div>
 
-        {/* Right Controls: Search + Filter Dropdown + Add Calling + View Toggle */}
+        {/* Right Controls: Search + Filter Dropdown + Admin Entry + Add Calling + View Toggle */}
         <div className="flex flex-wrap items-center gap-2">
           
           {/* Search Input */}
@@ -152,6 +170,19 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
               <option value="has_proposal">Pending Proposal</option>
             </select>
           </div>
+
+          {/* Admin Direct Quick Entry Button */}
+          {isAdmin && onOpenDirectEdit && (
+            <button
+              onClick={() => onOpenDirectEdit()}
+              className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-2xs"
+              title="Manually assign or edit calling directly without approval queue"
+              id="btn-admin-direct-entry"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>Direct Entry</span>
+            </button>
+          )}
 
           {/* Add Custom Calling Button */}
           {onOpenAddCustomCalling && (
@@ -190,7 +221,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
         </div>
       </div>
 
-      {/* TABLE VIEW (Matching reference "Recent Activities" table style) */}
+      {/* TABLE VIEW */}
       {viewMode === 'table' && (
         <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs">
           <table className="w-full min-w-[760px] text-left border-collapse text-xs">
@@ -263,7 +294,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                       ) : (
                         <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                          <span>Sustained & Set Apart</span>
+                          <span>Sustained &amp; Set Apart</span>
                         </span>
                       )}
                     </td>
@@ -283,6 +314,19 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     {/* Action Button */}
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end space-x-1.5">
+                        
+                        {/* Direct Edit for Admin */}
+                        {isAdmin && onOpenDirectEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenDirectEdit(calling)}
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-slate-200"
+                            title="Direct edit / assign this calling"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
                         {calling.isVacant && onDeleteCalling && (
                           <button
                             type="button"
@@ -335,11 +379,23 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                 <div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium mb-1.5">
                     <span>{calling.organization} • {calling.subOrg}</span>
-                    {activeProposal && (
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                        Pending
-                      </span>
-                    )}
+                    <div className="flex items-center space-x-1">
+                      {isAdmin && onOpenDirectEdit && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenDirectEdit(calling)}
+                          className="text-slate-400 hover:text-blue-600 p-1 rounded hover:bg-slate-100 transition-colors"
+                          title="Direct edit calling"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {activeProposal && (
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                          Pending
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <h4 

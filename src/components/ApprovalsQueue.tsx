@@ -77,6 +77,10 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
 
   const currentLeader = BISHOPRIC_LEADERS[effectiveSigningRole] || BISHOPRIC_LEADERS.bishop;
 
+  // Determine if user has administrator privileges
+  const isAdmin = currentUser.isSuperAdmin || 
+    ['bishop', 'first_counselor', 'second_counselor', 'clerk', 'executive_secretary', 'exec_sec'].includes(currentUser.role);
+
   // Group proposals by status
   const pendingProposals = proposals.filter(p => p.finalStatus === 'pending_review');
   const approvedActionProposals = proposals.filter(p => p.finalStatus === 'approved_for_action');
@@ -594,13 +598,30 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               )}
 
+              {/* Action Ready Status Guidance Banner */}
+              {proposal.finalStatus === 'approved_for_action' && (
+                <div className="p-2.5 bg-emerald-50/90 border border-emerald-200/90 rounded-xl text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Action Ready:</strong> Calling recommendation is fully approved by Bishopric. Ready to extend call and present for sustaining in Sacrament Meeting.
+                    </span>
+                  </div>
+                  {isAdmin && onResetProposal && (
+                    <span className="text-[11px] text-emerald-800 font-medium shrink-0">
+                      Need reconsideration? Use <strong>Reset for Discussion</strong>.
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Declined Status Guidance Banner */}
               {proposal.finalStatus === 'declined' && (
                 <div className="p-2.5 bg-rose-50/80 border border-rose-200/80 rounded-xl text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center space-x-2">
                     <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                     <span>
-                      <strong>Proposal Declined:</strong> Any leader who declined can change their decision above/below, or Super Admin can reset this proposal to bring it back into discussion.
+                      <strong>Proposal Declined:</strong> Any leader who declined can change their decision above/below, or administrators can reset this proposal to bring it back into discussion.
                     </span>
                   </div>
                 </div>
@@ -612,7 +633,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   <div className="w-full sm:w-auto flex-1 max-w-md">
                     <input
                       type="text"
-                      placeholder={`Add optional discussion/change note...`}
+                      placeholder={`Add optional discussion or reset note...`}
                       value={noteInputMap[proposal.id] || ''}
                       onChange={(e) => handleNoteChange(proposal.id, e.target.value)}
                       className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20"
@@ -651,13 +672,18 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         </div>
                       )}
 
-                      {/* Super Admin Reset Proposal Action */}
-                      {currentUser.isSuperAdmin && onResetProposal && (
+                      {/* Admin Reset Proposal Action */}
+                      {isAdmin && onResetProposal && (
                         <button
                           type="button"
-                          onClick={() => onResetProposal(proposal.id, noteInputMap[proposal.id])}
+                          onClick={() => {
+                            const reason = noteInputMap[proposal.id] || 'Reset declined proposal for bishopric review';
+                            onResetProposal(proposal.id, reason);
+                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
+                          }}
                           className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5"
                           title="Reset all 3 sign-offs to pending and bring back for review"
+                          id={`btn-reset-declined-${proposal.id}`}
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           <span>Reset for Discussion</span>
@@ -724,13 +750,18 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         </>
                       )}
 
-                      {/* Super Admin Reset in Pending View */}
-                      {currentUser.isSuperAdmin && onResetProposal && (
+                      {/* Admin Reset in Pending View */}
+                      {isAdmin && onResetProposal && (
                         <button
                           type="button"
-                          onClick={() => onResetProposal(proposal.id, noteInputMap[proposal.id])}
+                          onClick={() => {
+                            const reason = noteInputMap[proposal.id] || 'Reset all votes to pending';
+                            onResetProposal(proposal.id, reason);
+                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
+                          }}
                           className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-1.5 px-2.5 rounded-xl transition-colors border border-slate-200 flex items-center space-x-1"
                           title="Reset all votes to pending"
+                          id={`btn-reset-votes-${proposal.id}`}
                         >
                           <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                           <span>Reset Votes</span>
@@ -756,15 +787,39 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </>
                   )}
 
-                  {/* Fully Approved Action */}
+                  {/* Fully Approved / Action Ready Actions */}
                   {isFullyApproved && proposal.finalStatus !== 'sustained' && (
-                    <button
-                      onClick={() => onSustainCalling(proposal)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-1.5 px-4 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5"
-                    >
-                      <CheckCheck className="w-4 h-4" />
-                      <span>Mark Sustained in Ward Meeting</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Admin Reset Proposal on Action Ready Tab */}
+                      {isAdmin && onResetProposal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const customNote = noteInputMap[proposal.id];
+                            const reason = customNote && customNote.trim() 
+                              ? customNote.trim() 
+                              : 'Re-opened from Action Ready queue for bishopric discussion';
+                            onResetProposal(proposal.id, reason);
+                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
+                          }}
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+                          title="Reset 3-point approvals to pending and bring calling back to Pending Review for further discussion"
+                          id={`btn-reset-action-ready-${proposal.id}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Reset for Discussion</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => onSustainCalling(proposal)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-1.5 px-4 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+                        id={`btn-sustain-${proposal.id}`}
+                      >
+                        <CheckCheck className="w-4 h-4" />
+                        <span>Mark Sustained in Ward Meeting</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

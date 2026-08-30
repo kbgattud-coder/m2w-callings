@@ -291,4 +291,5 @@ export const WARD_MEMBERS: WardMember[] = [
   { id: 'm-48', name: 'Mendez, Jerichzan Narciso', gender: 'M', priesthood: 'Priest', currentCallings: ['Priests Quorum First Assistant'] },
   { id: 'm-49', name: 'Rivera, Keneth Pestaño', gender: 'M', priesthood: 'Elder', currentCallings: ['Young Single Adult Leader'] },
   { id: 'm-50', name: 'Benedicto, Shu Lein San Giray', gender: 'F', currentCallings: ['Ward Missionary', 'Young Single Adult Leader'] },
+  { id: 'm-51', name: 'Enguito, Zamina', gender: 'F', currentCallings: ['Builders of Faith Class Second Counselor'] },
 ];
