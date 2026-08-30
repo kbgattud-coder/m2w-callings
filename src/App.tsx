@@ -87,8 +87,8 @@ export default function App() {
     return 'bishop';
   });
 
-  // Active Main Tab/View
-  const [activeTab, setActiveTab] = useState<ViewTab>('org_chart');
+  // Active Main Tab/View (Default to Needs Approval view)
+  const [activeTab, setActiveTab] = useState<ViewTab>('needs_approval');
 
   // Active Approvals Stage Sub-tab
   const [approvalsSubTab, setApprovalsSubTab] = useState<'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined'>('pending');
@@ -255,6 +255,8 @@ export default function App() {
   // Handle Login & Role Assignment
   const handleLoginSuccess = (user: AuthUser) => {
     setCurrentUser(user);
+    setActiveTab('needs_approval');
+    setApprovalsSubTab('pending');
     if (user.isSuperAdmin) {
       setActiveRole('bishop');
     } else {
@@ -413,6 +415,9 @@ export default function App() {
     }
 
     // Recalculate Final Status (Stage 1 -> Stage 2 transition)
+    // Unanimous Approval (3/3) advances to 'for_interview' (Stage 2)
+    // Unanimous Decline (3/3) moves to 'declined'
+    // 1 or 2 Declines keep proposal in 'pending_review' for continued Bishopric deliberation
     const statuses = [
       updatedApprovals.bishop.status,
       updatedApprovals.first_counselor.status,
@@ -423,7 +428,7 @@ export default function App() {
     const rejectedCount = statuses.filter(s => s === 'rejected').length;
 
     let newFinalStatus = prop.finalStatus;
-    if (rejectedCount > 0) {
+    if (rejectedCount === 3) {
       newFinalStatus = 'declined';
     } else if (approvedCount === 3) {
       newFinalStatus = 'for_interview';
@@ -431,7 +436,7 @@ export default function App() {
       newFinalStatus = 'pending_review';
     }
 
-    const actionText = status === 'approved' ? 'Approved proposal' : status === 'rejected' ? 'Declined proposal' : 'Reset approval';
+    const actionText = status === 'approved' ? 'Approved proposal' : status === 'rejected' ? 'Disapproved proposal' : 'Reset approval';
     const actorName = currentUser?.isSuperAdmin 
       ? `${currentUser.name} (acting as ${actorLeader.title})`
       : currentUser?.name ? `${currentUser.name} (${currentUser.calling})` : actorLeader.name;
@@ -452,6 +457,44 @@ export default function App() {
     };
 
     setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    // If a note was provided when disapproving (or approving), automatically forward it to the Council Message Board with a tag
+    if (note && note.trim()) {
+      const now = new Date();
+      const formattedTime = now.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      const messageText = status === 'rejected' 
+        ? `[Disapproved]: ${note.trim()}`
+        : note.trim();
+
+      const newMsg: CouncilMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        proposalId,
+        callingId: prop?.callingId,
+        callingTitle: prop?.callingTitle || 'Calling',
+        organization: prop?.organization || '',
+        authorName: currentUser?.name || actorLeader.name,
+        authorRole: actorLeader.title,
+        authorCalling: currentUser?.calling,
+        authorId: currentUser?.id,
+        text: messageText,
+        createdAt: now.toISOString(),
+        timestampFormatted: formattedTime,
+        tag: status === 'rejected' ? 'disapproved' : 'general',
+      };
+
+      setCouncilMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
+      saveCouncilMessageToFirestore(newMsg).catch(err => {
+        console.error('Failed to post disapproval message to Council Message Board:', err);
+      });
+    }
 
     setSyncStatus('syncing');
     try {

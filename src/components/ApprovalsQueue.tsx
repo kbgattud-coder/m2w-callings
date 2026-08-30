@@ -128,16 +128,18 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   const [declineReasonText, setDeclineReasonText] = useState('');
   const [declinePromoteCandidateId, setDeclinePromoteCandidateId] = useState<string>('');
 
-  // Stage 1: Decline / For Discussion Vote Modal
+  // Stage 1: Disapprove / For Discussion Vote Modal
   const [discussionVoteModal, setDiscussionVoteModal] = useState<{ proposal: CallingProposal; role: BishopricRole } | null>(null);
   const [discussionVoteNote, setDiscussionVoteNote] = useState('');
 
-  // Submit Stage 1 Decline / For Discussion modal
+  // Submit Stage 1 Disapprove / For Discussion modal
   const handleConfirmDiscussionVote = () => {
     if (!discussionVoteModal) return;
     const { proposal, role } = discussionVoteModal;
-    const note = discussionVoteNote.trim() || 'Declined / flagged for Bishopric discussion';
+    const note = discussionVoteNote.trim() || 'Disapproved / flagged for Bishopric discussion';
     onUpdateApproval(proposal.id, role, 'rejected', note);
+    // Also automatically open the message board on this proposal so the leader sees their posted message
+    setShowMessageBoardMap(prev => ({ ...prev, [proposal.id]: true }));
     setDiscussionVoteModal(null);
     setDiscussionVoteNote('');
   };
@@ -161,9 +163,9 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   };
 
   // Filter proposals into the structured stages
-  // Stage 1 (Pending Review): has a named candidate and pending review
+  // Stage 1 (Pending Review): All active proposals currently awaiting bishopric review/deliberation
   const pendingProposals = proposals.filter(p => 
-    p.finalStatus === 'pending_review' && !isProposalOpenForDiscussion(p)
+    p.finalStatus === 'pending_review'
   );
   
   // Stage 2 (For Interview): all 3 approved
@@ -181,17 +183,16 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   
   const unrecordedProposalsCount = forRecordingProposals.filter(p => !p.isRecordedInLCR).length;
 
-  // Declined / For Discussion: either explicitly declined OR open for discussion (no name selected)
-  const declinedAndDiscussionProposals = proposals.filter(p => 
-    p.finalStatus === 'declined' || 
-    (p.finalStatus === 'pending_review' && isProposalOpenForDiscussion(p))
+  // Declined Tab: strictly proposals where unanimous (3/3) Bishopric members declined
+  const declinedProposals = proposals.filter(p => 
+    p.finalStatus === 'declined'
   );
 
   const displayedProposals = 
     activeTab === 'pending' ? pendingProposals :
     activeTab === 'for_interview' ? forInterviewProposals :
     activeTab === 'for_sustaining' ? forSustainingProposals :
-    activeTab === 'for_recording' ? forRecordingProposals : declinedAndDiscussionProposals;
+    activeTab === 'for_recording' ? forRecordingProposals : declinedProposals;
 
   const handleNoteChange = (proposalId: string, text: string) => {
     setNoteInputMap(prev => ({ ...prev, [proposalId]: text }));
@@ -412,7 +413,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           </span>
         </button>
 
-        {/* Declined / For Discussion Sub-tab */}
+        {/* Disapproved Sub-tab */}
         <button
           type="button"
           onClick={() => setActiveTab('declined')}
@@ -421,15 +422,15 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
               ? 'bg-rose-600 text-white shadow-xs'
               : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
           }`}
-          id="tab-declined"
+          id="tab-disapproved"
         >
           <XCircle className="w-3.5 h-3.5" />
-          <span>Declined / For Discussion</span>
-          {declinedAndDiscussionProposals.length > 0 && (
+          <span>Disapproved</span>
+          {declinedProposals.length > 0 && (
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
               activeTab === 'declined' ? 'bg-rose-700 text-white' : 'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300'
             }`}>
-              {declinedAndDiscussionProposals.length}
+              {declinedProposals.length}
             </span>
           )}
         </button>
@@ -454,7 +455,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           {activeTab === 'pending' && (
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
-              <span><strong>Stage 1 (Pending Review):</strong> Review proposed candidates, deliberate in bishopric meeting, and record 3-point unanimity sign-offs. Once all 3 approve, proposals move automatically to <strong>For Interview</strong>.</span>
+              <span><strong>Stage 1 (Pending Review):</strong> Review candidate proposals, deliberate via the Council Message Board, and record Bishopric sign-offs. Unanimous (3/3) approval moves to <strong>For Interview</strong>. If 1 or 2 members disapprove, the proposal remains here for continued council deliberation.</span>
             </div>
           )}
           {activeTab === 'for_interview' && (
@@ -478,7 +479,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           {activeTab === 'declined' && (
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
-              <span><strong>Declined &amp; Open For Discussion:</strong> Calling proposals needing council deliberation, polled names, or declined recommendations. Review vote breakdown, poll candidate names, log discussion notes, and finalize a name to send to Stage 1.</span>
+              <span><strong>Disapproved Proposals (Unanimous 3/3 Disapproved):</strong> Calling recommendations where all 3 Bishopric members disapproved or the recommendation was concluded. Review past discussion notes or reset for fresh consideration.</span>
             </div>
           )}
         </div>
@@ -560,6 +561,12 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         <span>3/3 Bishopric Approved</span>
                       </span>
                     )}
+                    {rejectedCount > 0 && rejectedCount < 3 && activeTab === 'pending' && (
+                      <span className="bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center space-x-1 border border-amber-300 dark:border-amber-700/80">
+                        <MessageCircle className="w-3 h-3 text-amber-600" />
+                        <span>In Deliberation ({rejectedCount} {rejectedCount === 1 ? 'Disapproval' : 'Disapprovals'})</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Primary Focus: Candidate Name */}
@@ -622,7 +629,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     {proposal.finalStatus === 'for_recording' || proposal.finalStatus === 'sustained' ? 'Stage 4: For Recording' :
                      proposal.finalStatus === 'for_sustaining' ? 'Stage 3: For Sustaining' :
                      proposal.finalStatus === 'for_interview' || proposal.finalStatus === 'approved_for_action' ? 'Stage 2: For Interview' :
-                     proposal.finalStatus === 'declined' ? 'Declined' : 'Stage 1: Pending Review'}
+                     proposal.finalStatus === 'declined' ? 'Disapproved' : 'Stage 1: Pending Review'}
                   </span>
 
                   {isAdmin && onDeleteProposal && (
@@ -644,6 +651,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   &quot;{proposal.reasonNote}&quot;
                 </div>
               )}
+
 
               {/* ========================================================================= */}
               {/* CANDIDATE DISCUSSION POOL & POLLING (Pending or Declined/For Discussion)  */}
@@ -819,7 +827,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
 
                     {activeTab === 'declined' && (
                       <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        {approvedCount} Approved • {rejectedCount} Declined • {pendingCount} Pending
+                        {approvedCount} Approved • {rejectedCount} Disapproved • {pendingCount} Pending
                       </span>
                     )}
                   </div>
@@ -851,7 +859,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                             ) : approval.status === 'rejected' ? (
                               <span className="flex items-center space-x-1 text-rose-700 dark:text-rose-400 font-bold text-[11px]">
                                 <XCircle className="w-3.5 h-3.5" />
-                                <span>Declined</span>
+                                <span>Disapproved</span>
                               </span>
                             ) : (
                               <span className="flex items-center space-x-1 text-amber-700 dark:text-amber-400 font-bold text-[11px]">
@@ -1176,6 +1184,12 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                                         <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${getRoleBadgeClasses(msg.authorRole || msg.authorCalling)}`}>
                                           {msg.authorRole || msg.authorCalling || 'Council Member'}
                                         </span>
+                                        {(msg.tag === 'disapproved' || (msg.text && msg.text.startsWith('[Disapproved]:'))) && (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center space-x-1">
+                                            <XCircle className="w-2.5 h-2.5" />
+                                            <span>Disapproved</span>
+                                          </span>
+                                        )}
                                       </div>
 
                                       <div className="flex items-center gap-1.5 shrink-0">
@@ -1196,7 +1210,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                                     </div>
 
                                     <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed break-words whitespace-pre-wrap">
-                                      {msg.text}
+                                      {msg.text.startsWith('[Disapproved]: ') ? msg.text.replace('[Disapproved]: ', '') : msg.text}
                                     </p>
                                   </div>
                                 </div>
@@ -1296,7 +1310,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                             }}
                             className="px-3 py-2 sm:py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors border border-transparent hover:border-rose-200 dark:hover:border-rose-800 cursor-pointer whitespace-nowrap"
                           >
-                            Change to Decline / For Discussion
+                            Change to Disapprove / For Discussion
                           </button>
                         </div>
                       ) : (
@@ -1309,7 +1323,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                             }}
                             className="px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 transition-colors cursor-pointer whitespace-nowrap"
                           >
-                            Decline / For Discussion
+                            Disapprove / For Discussion
                           </button>
 
                           <button
@@ -1410,7 +1424,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
               {activeTab === 'for_interview' && 'Proposals with all 3 Bishopric sign-offs will appear here for interview assignment.'}
               {activeTab === 'for_sustaining' && 'Proposals with completed and accepted interviews will appear here for sacrament meeting.'}
               {activeTab === 'for_recording' && 'Callings sustained in sacrament meeting will appear here for LCR clerk entry.'}
-              {activeTab === 'declined' && 'No declined proposals currently on file.'}
+              {activeTab === 'declined' && 'No disapproved proposals currently on file.'}
             </p>
           </div>
         )}
@@ -1426,7 +1440,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   <XCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Flag for Discussion / Decline</h3>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Flag for Discussion / Disapprove</h3>
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                     Vote as {BISHOPRIC_LEADERS[discussionVoteModal.role].title}
                   </span>
@@ -1455,7 +1469,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                Discussion Note / Reason (Optional):
+                Disapproval Note / Reason (Posts directly to Council Message Board):
               </label>
               <textarea
                 placeholder="Enter comments for Bishopric discussion (e.g. recommend discussing alternative candidates, existing workload, timing concerns)..."
@@ -1483,7 +1497,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 onClick={handleConfirmDiscussionVote}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-2xs cursor-pointer transition-colors"
               >
-                Confirm Decline / Discussion
+                Confirm Disapproval
               </button>
             </div>
           </div>

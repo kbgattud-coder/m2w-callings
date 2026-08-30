@@ -106,6 +106,7 @@ export interface CouncilMessage {
   text: string;
   createdAt: string;
   timestampFormatted?: string;
+  tag?: 'disapproved' | 'general';
 }
 
 export interface Calling {
