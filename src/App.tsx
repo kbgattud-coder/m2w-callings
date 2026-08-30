@@ -682,15 +682,15 @@ export default function App() {
     }
   };
 
-  // Super Admin / Bishopric Reset Proposal for Discussion (Re-open declined or existing proposals)
+  // Executive Secretary / Bishopric Reset Proposal for Discussion (Re-open declined or existing proposals)
   const handleResetProposal = async (proposalId: string, reason?: string) => {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser 
-      ? (currentUser.isSuperAdmin ? `${currentUser.name} (Super Admin)` : `${currentUser.name} (${currentUser.calling})`)
-      : 'Super Admin';
+      ? (currentUser.isSuperAdmin ? `${currentUser.name} (${currentUser.calling || 'Ward Executive Secretary'})` : `${currentUser.name} (${currentUser.calling})`)
+      : 'Ward Executive Secretary';
 
     const resetApprovals = {
       bishop: { status: 'pending' as ApprovalStatus, updatedAt: todayStr, note: '' },
@@ -725,10 +725,10 @@ export default function App() {
     }
   };
 
-  // Clear all discussion & action logs across all proposals (Super Admin Only)
+  // Clear all discussion & action logs across all proposals (Executive Secretary Only)
   const handleClearAllLogs = async () => {
     if (!currentUser?.isSuperAdmin) {
-      alert('Only the Super Admin has permission to clear all proposal logs.');
+      alert('Only the Ward Executive Secretary has permission to clear all proposal logs.');
       return;
     }
 
@@ -752,10 +752,10 @@ export default function App() {
     }
   };
 
-  // Clear log for a single proposal (Super Admin Only)
+  // Clear log for a single proposal (Executive Secretary Only)
   const handleClearProposalHistory = async (proposalId: string) => {
     if (!currentUser?.isSuperAdmin) {
-      alert('Only the Super Admin has permission to clear proposal history logs.');
+      alert('Only the Ward Executive Secretary has permission to clear proposal history logs.');
       return;
     }
 
@@ -788,7 +788,7 @@ export default function App() {
 
     const actorName = currentUser?.name || 'Leader';
     const actorRole = currentUser?.isSuperAdmin 
-      ? 'Super Admin' 
+      ? (currentUser?.calling || 'Ward Executive Secretary') 
       : currentUser?.calling || currentUser?.role || 'Council Member';
 
     const now = new Date();
@@ -865,7 +865,7 @@ export default function App() {
 
     const todayIso = new Date().toISOString().split('T')[0];
     const actorName = currentUser?.isSuperAdmin 
-      ? `${currentUser.name} (Super Admin)`
+      ? `${currentUser.name} (${currentUser.calling || 'Ward Executive Secretary'})`
       : currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
 
     const resetApprovals = {
@@ -910,7 +910,7 @@ export default function App() {
 
     const todayIso = new Date().toISOString().split('T')[0];
     const actorName = currentUser?.isSuperAdmin 
-      ? `${currentUser.name} (Super Admin)`
+      ? `${currentUser.name} (${currentUser.calling || 'Ward Executive Secretary'})`
       : currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
 
     const updatedProposal: CallingProposal = {
@@ -939,7 +939,7 @@ export default function App() {
     }
   };
 
-  // Super Admin Instant 3-Point Approval -> Moves to For Interview
+  // Executive Secretary Instant 3-Point Approval -> Moves to For Interview
   const handleSuperAdminApproveAll = async (proposalId: string) => {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
@@ -947,9 +947,9 @@ export default function App() {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const updatedApprovals = {
-      bishop: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
-      first_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
-      second_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Super Admin' },
+      bishop: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Ward Executive Secretary' },
+      first_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Ward Executive Secretary' },
+      second_counselor: { status: 'approved' as ApprovalStatus, updatedAt: todayStr, note: 'Approved via Ward Executive Secretary' },
     };
 
     const updatedProposal: CallingProposal = {
@@ -960,9 +960,9 @@ export default function App() {
         ...prop.statusHistory,
         {
           date: todayStr,
-          action: 'Super Admin Unanimous 3-Point Approval',
-          actor: 'Super Admin',
-          note: 'All 3 sign-offs authorized by Super Admin — Advanced to Stage 2: For Interview',
+          action: 'Executive Secretary Unanimous 3-Point Approval',
+          actor: currentUser?.name ? `${currentUser.name} (Exec. Sec.)` : 'Ward Executive Secretary',
+          note: 'All 3 sign-offs authorized by Ward Executive Secretary — Advanced to Stage 2: For Interview',
         }
       ]
     };

@@ -434,13 +434,13 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           )}
         </button>
 
-        {/* Clear All Logs Action (Super Admin Only) */}
+        {/* Clear All Logs Action (Executive Secretary Only) */}
         {currentUser.isSuperAdmin && onClearAllLogs && (
           <button
             type="button"
             onClick={onClearAllLogs}
             className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center space-x-1.5 shrink-0 cursor-pointer"
-            title="Clear discussion and action log history across all proposals (Super Admin Only)"
+            title="Clear discussion and action log history across all proposals (Executive Secretary Only)"
           >
             <Trash2 className="w-3 h-3 text-rose-500" />
             <span>Clear All Logs</span>
@@ -1329,7 +1329,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         </>
                       )}
 
-                      {/* Super Admin Quick Approve All in Pending View */}
+                      {/* Executive Secretary Quick Approve All in Pending View */}
                       {currentUser.isSuperAdmin && !isFullyApproved && onSuperAdminApproveAll && (
                         <button
                           type="button"

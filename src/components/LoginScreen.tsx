@@ -19,8 +19,8 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [activeTab, setActiveTab] = useState<'leader' | 'superadmin'>('leader');
-  const [superAdminPassword, setSuperAdminPassword] = useState('');
+  const [activeTab, setActiveTab] = useState<'leader' | 'execsec'>('leader');
+  const [execSecPassword, setExecSecPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Direct 1-Click Leader Login
@@ -29,22 +29,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     onLoginSuccess(userWithoutPass);
   };
 
-  const handleSuperAdminLogin = (e: React.FormEvent) => {
+  const handleExecSecLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (superAdminPassword === SUPER_ADMIN_PASSWORD) {
-      const superAdminUser: AuthUser = {
-        id: 'usr-superadmin',
-        name: 'Super Admin',
-        calling: 'System Administrator',
-        email: 'admin@masagana2nd.org',
-        role: 'super_admin',
+    if (execSecPassword === SUPER_ADMIN_PASSWORD) {
+      const execSecUser: AuthUser = {
+        id: 'usr-exec-sec',
+        name: 'Kurt Bryan Gattud',
+        calling: 'Ward Executive Secretary',
+        email: 'kbgattud@gmail.com',
+        role: 'executive_secretary',
         isSuperAdmin: true,
       };
-      onLoginSuccess(superAdminUser);
+      onLoginSuccess(execSecUser);
     } else {
-      setErrorMsg('Incorrect Super Admin password. Please try again.');
+      setErrorMsg('Incorrect Executive Secretary password. Please try again.');
     }
   };
 
@@ -133,16 +133,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </button>
 
           <button
-            id="tab-superadmin-login"
-            onClick={() => { setActiveTab('superadmin'); setErrorMsg(null); }}
+            id="tab-execsec-login"
+            onClick={() => { setActiveTab('execsec'); setErrorMsg(null); }}
             className={`flex-1 py-3 text-xs font-bold transition-colors flex items-center justify-center space-x-2 border-b-2 ${
-              activeTab === 'superadmin'
-                ? 'border-amber-600 text-amber-700 bg-white'
+              activeTab === 'execsec'
+                ? 'border-indigo-600 text-indigo-700 bg-white'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Shield className="w-4 h-4 text-amber-500" />
-            <span>Super Admin</span>
+            <Shield className="w-4 h-4 text-indigo-500" />
+            <span>Ward Executive Secretary</span>
           </button>
         </div>
 
@@ -216,42 +216,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSuperAdminLogin} className="space-y-4">
-              <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs space-y-1">
-                <div className="font-bold flex items-center space-x-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Super Admin Authorization</span>
+            <form onSubmit={handleExecSecLogin} className="space-y-4">
+              <div className="bg-indigo-50 p-3.5 rounded-xl border border-indigo-200 text-indigo-950 text-xs space-y-1">
+                <div className="font-bold flex items-center space-x-1.5 text-indigo-900">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Ward Executive Secretary Authorization</span>
                 </div>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Grants complete administrative control, unanimous 3-point approval overrides, and full calling management.
+                <p className="text-[11px] text-indigo-800 leading-relaxed">
+                  Grants complete administrative control, calling management, council coordination, and unanimous approval authority.
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Super Admin Password
+                  Executive Secretary Password
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
-                    id="input-superadmin-password"
+                    id="input-execsec-password"
                     type="password"
                     required
-                    placeholder="Enter Super Admin Password"
-                    value={superAdminPassword}
-                    onChange={(e) => setSuperAdminPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+                    placeholder="Enter Executive Secretary Password"
+                    value={execSecPassword}
+                    onChange={(e) => setExecSecPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
                   />
                 </div>
               </div>
 
               <button
-                id="btn-superadmin-submit"
+                id="btn-execsec-submit"
                 type="submit"
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-sm"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs py-2.5 rounded-xl transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
               >
                 <Shield className="w-4 h-4" />
-                <span>Login as Super Admin</span>
+                <span>Login as Ward Executive Secretary</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
