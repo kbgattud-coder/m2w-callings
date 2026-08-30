@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Calling, CallingFilterStatus, CallingProposal } from '../types';
+import { Calling, CallingFilterStatus, CallingProposal, AuthUser } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
 import { sortCallings } from '../utils/callingSort';
+import { ProposalPreviewModal } from './ProposalPreviewModal';
 import { 
   Search, 
   Filter, 
@@ -21,7 +22,9 @@ import {
   Trash2,
   Plus,
   Edit3,
-  ShieldCheck
+  ShieldCheck,
+  Users,
+  Eye
 } from 'lucide-react';
 
 interface OrgChartDirectoryProps {
@@ -35,13 +38,11 @@ interface OrgChartDirectoryProps {
   onOpenAddCustomCalling?: () => void;
   onOpenDirectEdit?: (calling?: Calling) => void;
   onDeleteCalling?: (callingId: string, callingTitle: string) => void;
+  onNavigateToApprovals?: (tabKey?: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording') => void;
+  onSelectCandidate?: (proposalId: string, candidateId: string) => void;
+  onAddCandidate?: (proposalId: string, name: string, note?: string) => void;
   initialFilterStatus?: CallingFilterStatus;
-  currentUser?: {
-    isSuperAdmin?: boolean;
-    role?: string;
-    name?: string;
-    calling?: string;
-  };
+  currentUser?: AuthUser;
 }
 
 export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
@@ -55,25 +56,44 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
   onOpenAddCustomCalling,
   onOpenDirectEdit,
   onDeleteCalling,
+  onNavigateToApprovals,
+  onSelectCandidate,
+  onAddCandidate,
   initialFilterStatus = 'all',
   currentUser,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<CallingFilterStatus>(initialFilterStatus);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [previewProposal, setPreviewProposal] = useState<CallingProposal | null>(null);
 
-  const isAdmin = currentUser?.isSuperAdmin || 
-    currentUser?.role === 'bishop' || 
-    currentUser?.role === 'first_counselor' || 
-    currentUser?.role === 'second_counselor' || 
-    currentUser?.role === 'clerk' || 
-    currentUser?.role === 'exec_sec';
+  const fallbackUser: AuthUser = currentUser || {
+    id: 'guest',
+    name: 'Guest Leader',
+    calling: 'Ward Leader',
+    email: '',
+    role: 'bishop',
+    isSuperAdmin: false,
+  };
+
+  const isAdmin = fallbackUser.isSuperAdmin || 
+    fallbackUser.role === 'bishop' || 
+    fallbackUser.role === 'first_counselor' || 
+    fallbackUser.role === 'second_counselor' || 
+    (fallbackUser.role as string) === 'clerk' || 
+    (fallbackUser.role as string) === 'exec_sec' ||
+    fallbackUser.role === 'executive_secretary';
 
   // Map proposals to callings for quick lookup
   const proposalsMap = useMemo(() => {
     const map = new Map<string, CallingProposal>();
     proposals.forEach(p => {
-      if (p.finalStatus === 'pending_review' || p.finalStatus === 'approved_for_action') {
+      if (
+        p.finalStatus === 'pending_review' || 
+        p.finalStatus === 'for_interview' || 
+        p.finalStatus === 'for_sustaining' || 
+        p.finalStatus === 'approved_for_action'
+      ) {
         map.set(p.callingId, p);
       }
     });
@@ -273,10 +293,20 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                     {/* Status Dot */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       {activeProposal ? (
-                        <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/60 whitespace-nowrap">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewProposal(activeProposal);
+                          }}
+                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 px-2.5 py-1 rounded-full border border-blue-200/80 transition-all cursor-pointer shadow-2xs group/pill text-left"
+                          title="Click to view proposed candidates, status, and bishopric sign-offs"
+                          id={`btn-proposal-pill-${calling.id}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 group-hover/pill:scale-125 transition-transform"></span>
                           <span>Proposal Pending</span>
-                        </span>
+                          <Eye className="w-3 h-3 text-blue-500 opacity-60 group-hover/pill:opacity-100 transition-opacity ml-0.5" />
+                        </button>
                       ) : calling.isVacant ? (
                         <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
@@ -285,7 +315,7 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                       ) : !calling.setApart ? (
                         <button
                           onClick={() => onToggleSetApart(calling.id)}
-                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-full border border-purple-200/60 transition-colors whitespace-nowrap"
+                          className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-full border border-purple-200/60 transition-colors whitespace-nowrap cursor-pointer"
                           title="Click to mark set apart"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0"></span>
@@ -391,9 +421,20 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
                         </button>
                       )}
                       {activeProposal && (
-                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                          Pending
-                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewProposal(activeProposal);
+                          }}
+                          className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 border border-blue-200 px-2 py-0.5 rounded-full transition-colors flex items-center space-x-1 cursor-pointer"
+                          title="Click to view proposed candidates and consensus status"
+                          id={`btn-grid-proposal-pill-${calling.id}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          <span>Proposal Pending</span>
+                          <Eye className="w-2.5 h-2.5 text-blue-500" />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -475,6 +516,18 @@ export const OrgChartDirectory: React.FC<OrgChartDirectoryProps> = ({
           <p className="text-xs text-slate-400">Try adjusting your search query or selecting another organization.</p>
         </div>
       )}
+
+      {/* Clickable Proposal Details & Candidates Popover/Modal */}
+      <ProposalPreviewModal
+        isOpen={!!previewProposal}
+        onClose={() => setPreviewProposal(null)}
+        proposal={previewProposal}
+        calling={callings.find(c => c.id === previewProposal?.callingId)}
+        currentUser={fallbackUser}
+        onSelectCandidate={onSelectCandidate}
+        onAddCandidate={onAddCandidate}
+        onNavigateToApprovals={onNavigateToApprovals}
+      />
 
     </div>
   );

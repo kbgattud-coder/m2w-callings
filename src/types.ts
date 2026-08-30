@@ -27,6 +27,15 @@ export interface ApprovalsState {
   second_counselor: BishopricApproval;
 }
 
+export type ProposalFinalStatus = 
+  | 'pending_review' 
+  | 'for_interview' 
+  | 'for_sustaining' 
+  | 'for_recording' 
+  | 'declined' 
+  | 'approved_for_action' // backwards-compatibility alias for for_interview
+  | 'sustained'; // backwards-compatibility alias for for_recording
+
 export interface CandidateOption {
   id: string;
   name: string;
@@ -52,7 +61,29 @@ export interface CallingProposal {
   reasonNote: string;
   dateProposed: string;
   approvals: ApprovalsState;
-  finalStatus: 'pending_review' | 'approved_for_action' | 'sustained' | 'declined';
+  finalStatus: ProposalFinalStatus;
+  
+  // Step 2: For Interview stage fields
+  assignedInterviewer?: BishopricRole | string;
+  assignedInterviewerRole?: BishopricRole;
+  assignedInterviewerName?: string;
+  interviewDate?: string;
+  interviewNote?: string;
+  interviewNotes?: string;
+  
+  // Step 3: For Sustaining stage fields
+  targetSacramentDate?: string;
+  sustainingNote?: string;
+  sustainedDate?: string;
+
+  // Step 4: For Recording stage fields
+  isRecordedInLCR?: boolean;
+  recordedDate?: string;
+  recordedInLCRDate?: string;
+  recordedBy?: string;
+  recordedByClerk?: string;
+  lcrReferenceNote?: string;
+
   statusHistory: Array<{
     date: string;
     action: string;

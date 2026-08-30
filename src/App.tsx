@@ -85,6 +85,9 @@ export default function App() {
   // Active Main Tab/View
   const [activeTab, setActiveTab] = useState<ViewTab>('org_chart');
 
+  // Active Approvals Stage Sub-tab
+  const [approvalsSubTab, setApprovalsSubTab] = useState<'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined'>('pending');
+
   // Selected Organization in Sidebar Filter
   const [selectedOrg, setSelectedOrg] = useState<string>('All Organizations');
 
@@ -352,7 +355,7 @@ export default function App() {
       };
     }
 
-    // Recalculate Final Status
+    // Recalculate Final Status (Stage 1 -> Stage 2 transition)
     const statuses = [
       updatedApprovals.bishop.status,
       updatedApprovals.first_counselor.status,
@@ -366,7 +369,7 @@ export default function App() {
     if (rejectedCount > 0) {
       newFinalStatus = 'declined';
     } else if (approvedCount === 3) {
-      newFinalStatus = 'approved_for_action';
+      newFinalStatus = 'for_interview';
     } else {
       newFinalStatus = 'pending_review';
     }
@@ -399,6 +402,161 @@ export default function App() {
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to sync proposal approval to Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Assign Interviewer in Stage 2 (For Interview)
+  const handleAssignInterviewer = async (
+    proposalId: string, 
+    interviewerRole: BishopricRole, 
+    interviewerName: string, 
+    interviewDate?: string, 
+    note?: string
+  ) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      assignedInterviewerRole: interviewerRole,
+      assignedInterviewer: interviewerName,
+      interviewDate: interviewDate || prop.interviewDate,
+      interviewNotes: note || prop.interviewNotes,
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: `Interview assigned to ${interviewerName} (${interviewerRole.replace('_', ' ')})`,
+          actor: actorName,
+          note: note || undefined,
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync interviewer assignment:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Stage 2 -> Stage 3: Interview Completed & Calling Accepted
+  const handleInterviewCompleted = async (proposalId: string, note?: string, targetSunday?: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const interviewer = prop.assignedInterviewer || (currentUser ? currentUser.name : 'Bishopric');
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      finalStatus: 'for_sustaining',
+      interviewNotes: note || prop.interviewNotes,
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: `Interview conducted by ${interviewer} — Calling extended & accepted`,
+          actor: currentUser ? `${currentUser.name} (${currentUser.calling})` : interviewer,
+          note: note || 'Candidate accepted calling. Advanced to Stage 3: For Sustaining.',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync interview completion:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Member Declined Calling Interview -> Reset for Discussion
+  const handleMemberDeclined = async (proposalId: string, reasonNote: string, resetForDiscussion: boolean = true) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : 'Bishopric';
+
+    const resetApprovals = {
+      bishop: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+      first_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+      second_counselor: { status: 'pending' as ApprovalStatus, updatedAt: todayIso, note: '' },
+    };
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      approvals: resetApprovals,
+      finalStatus: 'pending_review',
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: `Member declined calling — Reset for Bishopric discussion`,
+          actor: actorName,
+          note: reasonNote || 'Candidate unable to accept calling. Reset to Stage 1: Pending Review for alternative candidate consideration.',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync member decline to Firestore:', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Stage 4: Mark Recorded in Leader and Clerk Resources (LCR)
+  const handleMarkRecordedInLCR = async (proposalId: string, lcrNote?: string, clerkName?: string) => {
+    const prop = proposals.find(p => p.id === proposalId);
+    if (!prop) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const recordedBy = clerkName || (currentUser ? currentUser.name : 'Ward Clerk');
+
+    const updatedProposal: CallingProposal = {
+      ...prop,
+      isRecordedInLCR: true,
+      recordedInLCRDate: todayIso,
+      recordedByClerk: recordedBy,
+      statusHistory: [
+        ...(prop.statusHistory || []),
+        {
+          date: todayIso,
+          action: `Recorded in Leader and Clerk Resources (LCR)`,
+          actor: recordedBy,
+          note: lcrNote || 'Sustained calling entry recorded in Church LCR system.',
+        }
+      ]
+    };
+
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    setSyncStatus('syncing');
+    try {
+      await saveProposalToFirestore(updatedProposal);
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('Failed to sync LCR recording status:', e);
       setSyncStatus('error');
     }
   };
@@ -490,7 +648,7 @@ export default function App() {
     }
   };
 
-  // Super Admin Instant 3-Point Approval
+  // Super Admin Instant 3-Point Approval -> Moves to For Interview
   const handleSuperAdminApproveAll = async (proposalId: string) => {
     const prop = proposals.find(p => p.id === proposalId);
     if (!prop) return;
@@ -506,14 +664,14 @@ export default function App() {
     const updatedProposal: CallingProposal = {
       ...prop,
       approvals: updatedApprovals,
-      finalStatus: 'approved_for_action',
+      finalStatus: 'for_interview',
       statusHistory: [
         ...prop.statusHistory,
         {
           date: todayStr,
           action: 'Super Admin Unanimous 3-Point Approval',
           actor: 'Super Admin',
-          note: 'All 3 sign-offs authorized by Super Admin',
+          note: 'All 3 sign-offs authorized by Super Admin — Advanced to Stage 2: For Interview',
         }
       ]
     };
@@ -733,14 +891,14 @@ export default function App() {
     }
   };
 
-  // Mark Sustained & Update Main Calling Record
-  const handleSustainCalling = async (proposal: CallingProposal) => {
+  // Stage 3 -> Stage 4: Mark Sustained in Sacrament Meeting & Update Main Calling Record
+  const handleSustainCalling = async (proposal: CallingProposal, sacramentDate?: string) => {
     if (proposal.proposedMemberName.toLowerCase().includes('to be discussed') || !proposal.proposedMemberName.trim()) {
       alert('Please propose and assign a specific candidate name before marking as sustained.');
       return;
     }
 
-    const todayStr = getTodayDateString();
+    const todayStr = sacramentDate || getTodayDateString();
     const todayIso = new Date().toISOString().split('T')[0];
     const targetCalling = callings.find(c => c.id === proposal.callingId);
     if (!targetCalling) return;
@@ -754,15 +912,16 @@ export default function App() {
       isVacant: false,
     };
 
-    // 2. Updated Proposal Status
+    // 2. Updated Proposal Status (Moves to Stage 4: For Recording)
     const updatedProposal: CallingProposal = {
       ...proposal,
-      finalStatus: 'sustained',
+      finalStatus: 'for_recording',
+      sustainedDate: todayStr,
       statusHistory: [
         ...proposal.statusHistory,
         {
           date: todayIso,
-          action: 'Calling sustained in Ward Meeting',
+          action: `Sustained in Ward Sacrament Meeting on ${todayStr} — Advanced to Stage 4: For Recording`,
           actor: currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name,
         }
       ]
@@ -785,7 +944,7 @@ export default function App() {
       setSyncStatus('error');
     }
 
-    alert(`Successfully recorded: ${proposal.proposedMemberName} sustained as ${proposal.callingTitle}!`);
+    setApprovalsSubTab('for_recording');
   };
 
   // Open Direct Calling Edit Modal (Admin bypass)
@@ -1115,10 +1274,16 @@ export default function App() {
               onOpenDirectEdit={handleOpenDirectEdit}
               onDeleteCalling={handleDeleteCalling}
               currentUser={currentUser}
+              onSelectCandidate={handleSelectCandidate}
+              onAddCandidate={handleAddCandidateToProposal}
+              onNavigateToApprovals={(tabKey) => {
+                setActiveTab('needs_approval');
+                if (tabKey) setApprovalsSubTab(tabKey);
+              }}
             />
           )}
 
-          {/* View 2: Callings Needing Approval */}
+          {/* View 2: Callings Needing Approval (4-Stage Workflow) */}
           {activeTab === 'needs_approval' && (
             <ApprovalsQueue
               currentUser={currentUser}
@@ -1127,6 +1292,12 @@ export default function App() {
               activeRole={activeRole}
               onRoleChange={setActiveRole}
               onUpdateApproval={handleUpdateApproval}
+              onAssignInterviewer={handleAssignInterviewer}
+              onInterviewCompleted={handleInterviewCompleted}
+              onMemberDeclined={handleMemberDeclined}
+              onMarkSustained={handleSustainCalling}
+              onMarkRecordedInLCR={handleMarkRecordedInLCR}
+              onToggleSetApart={handleToggleSetApart}
               onResetProposal={handleResetProposal}
               onClearAllLogs={handleClearAllLogs}
               onClearProposalHistory={handleClearProposalHistory}
@@ -1135,8 +1306,9 @@ export default function App() {
               onAddCandidateToProposal={handleAddCandidateToProposal}
               onRemoveCandidateFromProposal={handleRemoveCandidateFromProposal}
               onSuperAdminApproveAll={handleSuperAdminApproveAll}
-              onSustainCalling={handleSustainCalling}
               onDeleteProposal={handleDeleteProposal}
+              activeSubTab={approvalsSubTab}
+              onSubTabChange={setApprovalsSubTab}
             />
           )}
 

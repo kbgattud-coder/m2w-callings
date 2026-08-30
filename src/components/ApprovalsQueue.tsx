@@ -21,7 +21,14 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  Mic,
+  BookmarkCheck,
+  Building2,
+  FileText,
+  Copy,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react';
 
 interface ApprovalsQueueProps {
@@ -31,6 +38,12 @@ interface ApprovalsQueueProps {
   activeRole: BishopricRole;
   onRoleChange?: (role: BishopricRole) => void;
   onUpdateApproval: (proposalId: string, role: BishopricRole, status: ApprovalStatus, note?: string) => void;
+  onAssignInterviewer?: (proposalId: string, interviewerRole: BishopricRole, interviewerName: string, interviewDate?: string, note?: string) => void;
+  onInterviewCompleted?: (proposalId: string, note?: string, targetSunday?: string) => void;
+  onMemberDeclined?: (proposalId: string, reasonNote: string, resetForDiscussion?: boolean) => void;
+  onMarkSustained: (proposal: CallingProposal, sacramentDate?: string) => void;
+  onMarkRecordedInLCR?: (proposalId: string, lcrNote?: string, clerkName?: string) => void;
+  onToggleSetApart?: (callingId: string) => void;
   onResetProposal?: (proposalId: string, reason?: string) => void;
   onClearAllLogs?: () => void;
   onClearProposalHistory?: (proposalId: string) => void;
@@ -39,8 +52,9 @@ interface ApprovalsQueueProps {
   onAddCandidateToProposal?: (proposalId: string, candidateName: string, note?: string) => void;
   onRemoveCandidateFromProposal?: (proposalId: string, candidateId: string) => void;
   onSuperAdminApproveAll?: (proposalId: string) => void;
-  onSustainCalling: (proposal: CallingProposal) => void;
   onDeleteProposal?: (proposalId: string, title?: string) => void;
+  activeSubTab?: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined';
+  onSubTabChange?: (tab: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined') => void;
 }
 
 export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
@@ -50,6 +64,12 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   activeRole,
   onRoleChange,
   onUpdateApproval,
+  onAssignInterviewer,
+  onInterviewCompleted,
+  onMemberDeclined,
+  onMarkSustained,
+  onMarkRecordedInLCR,
+  onToggleSetApart,
   onResetProposal,
   onClearAllLogs,
   onClearProposalHistory,
@@ -58,15 +78,35 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   onAddCandidateToProposal,
   onRemoveCandidateFromProposal,
   onSuperAdminApproveAll,
-  onSustainCalling,
   onDeleteProposal,
+  activeSubTab = 'pending',
+  onSubTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved_action' | 'declined'>('pending');
+  const [internalTab, setInternalTab] = useState<'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined'>(activeSubTab);
+  const activeTab = onSubTabChange ? activeSubTab : internalTab;
+  const setActiveTab = (tab: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined') => {
+    if (onSubTabChange) onSubTabChange(tab);
+    setInternalTab(tab);
+  };
+
   const [noteInputMap, setNoteInputMap] = useState<Record<string, string>>({});
   const [newCandidateNameMap, setNewCandidateNameMap] = useState<Record<string, string>>({});
   const [newCandidateNoteMap, setNewCandidateNoteMap] = useState<Record<string, string>>({});
   const [showAddCandidateMap, setShowAddCandidateMap] = useState<Record<string, boolean>>({});
   const [showHistoryMap, setShowHistoryMap] = useState<Record<string, boolean>>({});
+
+  // Interview stage state
+  const [assignedLeaderMap, setAssignedLeaderMap] = useState<Record<string, BishopricRole>>({});
+  const [interviewDateMap, setInterviewDateMap] = useState<Record<string, string>>({});
+  const [interviewNoteMap, setInterviewNoteMap] = useState<Record<string, string>>({});
+
+  // Sustaining stage state
+  const [sacramentDateMap, setSacramentDateMap] = useState<Record<string, string>>({});
+  const [copiedScriptId, setCopiedScriptId] = useState<string | null>(null);
+
+  // Decline modal state
+  const [declineModalProposal, setDeclineModalProposal] = useState<CallingProposal | null>(null);
+  const [declineReasonText, setDeclineReasonText] = useState('');
 
   // Determine effective signing role for current user
   const effectiveSigningRole: BishopricRole = currentUser.isSuperAdmin 
@@ -81,14 +121,26 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   const isAdmin = currentUser.isSuperAdmin || 
     ['bishop', 'first_counselor', 'second_counselor', 'clerk', 'executive_secretary', 'exec_sec'].includes(currentUser.role);
 
-  // Group proposals by status
+  // Filter proposals into the 4 structured stages + declined
   const pendingProposals = proposals.filter(p => p.finalStatus === 'pending_review');
-  const approvedActionProposals = proposals.filter(p => p.finalStatus === 'approved_for_action');
+  
+  const forInterviewProposals = proposals.filter(p => 
+    p.finalStatus === 'for_interview' || p.finalStatus === 'approved_for_action'
+  );
+  
+  const forSustainingProposals = proposals.filter(p => p.finalStatus === 'for_sustaining');
+  
+  const forRecordingProposals = proposals.filter(p => 
+    p.finalStatus === 'for_recording' || p.finalStatus === 'sustained'
+  );
+  
   const declinedProposals = proposals.filter(p => p.finalStatus === 'declined');
 
   const displayedProposals = 
     activeTab === 'pending' ? pendingProposals :
-    activeTab === 'approved_action' ? approvedActionProposals : declinedProposals;
+    activeTab === 'for_interview' ? forInterviewProposals :
+    activeTab === 'for_sustaining' ? forSustainingProposals :
+    activeTab === 'for_recording' ? forRecordingProposals : declinedProposals;
 
   const handleNoteChange = (proposalId: string, text: string) => {
     setNoteInputMap(prev => ({ ...prev, [proposalId]: text }));
@@ -130,6 +182,37 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
     setShowAddCandidateMap(prev => ({ ...prev, [proposalId]: false }));
   };
 
+  // Interview stage assignment handler
+  const handleSaveInterviewAssignment = (proposal: CallingProposal) => {
+    const role = assignedLeaderMap[proposal.id] || proposal.assignedInterviewerRole || 'bishop';
+    const leaderInfo = BISHOPRIC_LEADERS[role] || BISHOPRIC_LEADERS.bishop;
+    const date = interviewDateMap[proposal.id] || proposal.interviewDate || 'Upcoming interview';
+    const note = interviewNoteMap[proposal.id] || proposal.interviewNotes || '';
+
+    if (onAssignInterviewer) {
+      onAssignInterviewer(proposal.id, role, leaderInfo.name, date, note);
+    }
+  };
+
+  // Copy Sunday sustaining script to clipboard
+  const handleCopySustainingScript = (proposal: CallingProposal) => {
+    const script = `It is proposed that ${proposal.proposedMemberName} be sustained as ${proposal.callingTitle} in the ${proposal.organization}${proposal.subOrg ? ` (${proposal.subOrg})` : ''}. Those in favor may manifest it by the uplifted hand. [Pause] Those opposed, if any, may manifest it.`;
+    navigator.clipboard.writeText(script);
+    setCopiedScriptId(proposal.id);
+    setTimeout(() => setCopiedScriptId(null), 3000);
+  };
+
+  // Submit Member Decline modal
+  const handleConfirmDecline = () => {
+    if (!declineModalProposal) return;
+    const reason = declineReasonText.trim() || 'Member declined calling interview';
+    if (onMemberDeclined) {
+      onMemberDeclined(declineModalProposal.id, reason, true);
+    }
+    setDeclineModalProposal(null);
+    setDeclineReasonText('');
+  };
+
   return (
     <div className="space-y-5">
       
@@ -140,10 +223,10 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
             <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <FileCheck2 className="w-4 h-4" />
             </div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">Calling Approvals & Discussions</h2>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">Bishopric Calling Workflow</h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-xl">
-            Review candidate pools, discuss options in Bishopric meeting, establish consensus, and record 3-point approvals.
+          <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+            Complete end-to-end calling lifecycle: candidate deliberations, 3-point unanimity sign-offs, interview assignment, sacrament meeting sustaining, and LCR recording.
           </p>
         </div>
 
@@ -172,9 +255,11 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
         </div>
       </div>
 
-      {/* Sub-Tabs & Bulk Log Tools */}
+      {/* 4-Stage Workflow Tabs */}
       <div className="flex items-center justify-between border-b border-slate-200/80 pb-2 overflow-x-auto gap-2">
-        <div className="flex items-center space-x-2 shrink-0">
+        <div className="flex items-center space-x-1.5 shrink-0">
+          
+          {/* Stage 1: Pending Review */}
           <button
             onClick={() => setActiveTab('pending')}
             className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
@@ -182,34 +267,90 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
+            id="tab-pending-review"
           >
             <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Pending Review ({pendingProposals.length})</span>
+            <span>1. Pending Review</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              activeTab === 'pending' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {pendingProposals.length}
+            </span>
           </button>
 
+          {/* Stage 2: For Interview */}
           <button
-            onClick={() => setActiveTab('approved_action')}
+            onClick={() => setActiveTab('for_interview')}
             className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-              activeTab === 'approved_action'
+              activeTab === 'for_interview'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
+            id="tab-for-interview"
           >
-            <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Action Ready ({approvedActionProposals.length})</span>
+            <Mic className="w-3.5 h-3.5 text-indigo-400" />
+            <span>2. For Interview</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              activeTab === 'for_interview' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {forInterviewProposals.length}
+            </span>
           </button>
 
+          {/* Stage 3: For Sustaining */}
           <button
-            onClick={() => setActiveTab('declined')}
+            onClick={() => setActiveTab('for_sustaining')}
             className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-              activeTab === 'declined'
+              activeTab === 'for_sustaining'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
+            id="tab-for-sustaining"
           >
-            <XCircle className="w-3.5 h-3.5 text-rose-400" />
-            <span>Declined ({declinedProposals.length})</span>
+            <Users className="w-3.5 h-3.5 text-emerald-400" />
+            <span>3. For Sustaining</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              activeTab === 'for_sustaining' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {forSustainingProposals.length}
+            </span>
           </button>
+
+          {/* Stage 4: For Recording */}
+          <button
+            onClick={() => setActiveTab('for_recording')}
+            className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'for_recording'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+            id="tab-for-recording"
+          >
+            <BookmarkCheck className="w-3.5 h-3.5 text-blue-400" />
+            <span>4. For Recording</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              activeTab === 'for_recording' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {forRecordingProposals.length}
+            </span>
+          </button>
+
+          {/* Secondary Filter: Declined */}
+          {declinedProposals.length > 0 && (
+            <button
+              onClick={() => setActiveTab('declined')}
+              className={`px-3 py-2 text-xs font-bold rounded-xl transition-all flex items-center space-x-1.5 whitespace-nowrap ${
+                activeTab === 'declined'
+                  ? 'bg-rose-900 text-white shadow-xs'
+                  : 'text-rose-600 hover:bg-rose-50'
+              }`}
+              id="tab-declined"
+            >
+              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+              <span>Declined ({declinedProposals.length})</span>
+            </button>
+          )}
+
         </div>
 
         {proposals.some(p => (p.statusHistory && p.statusHistory.length > 0) || p.approvals?.bishop?.note || p.approvals?.first_counselor?.note || p.approvals?.second_counselor?.note) && onClearAllLogs && (
@@ -222,6 +363,40 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
             <Trash2 className="w-3 h-3 text-rose-500" />
             <span>Clear All Logs</span>
           </button>
+        )}
+      </div>
+
+      {/* Stage Context Banner */}
+      <div className="bg-white/90 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs text-slate-600">
+        {activeTab === 'pending' && (
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span><strong>Stage 1 (Pending Review):</strong> Review proposed candidates, deliberate in bishopric meeting, and record 3-point unanimity sign-offs. Once all 3 approve, proposals move automatically to <strong>For Interview</strong>.</span>
+          </div>
+        )}
+        {activeTab === 'for_interview' && (
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+            <span><strong>Stage 2 (For Interview):</strong> All 3 Bishopric sign-offs are complete. Assign an interviewer, schedule the appointment, and extend the calling. If accepted, move to Sustaining; if declined, reset for council discussion.</span>
+          </div>
+        )}
+        {activeTab === 'for_sustaining' && (
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span><strong>Stage 3 (For Sustaining):</strong> Interview completed and calling accepted. Ready for Sacrament Meeting sustaining vote. Click <strong>Mark Sustained</strong> to update ward directory.</span>
+          </div>
+        )}
+        {activeTab === 'for_recording' && (
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            <span><strong>Stage 4 (For Recording):</strong> Callings sustained in sacrament meeting. Record in Leader and Clerk Resources (LCR) and track setting apart by the Bishopric.</span>
+          </div>
+        )}
+        {activeTab === 'declined' && (
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span><strong>Declined Proposals:</strong> Recommendations that were declined during voting or where a candidate was unable to accept. Administrators can reset for discussion anytime.</span>
+          </div>
         )}
       </div>
 
@@ -240,7 +415,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
             safeApprovals.second_counselor.status,
           ];
           const approvedCount = approvalValues.filter(s => s === 'approved').length;
-          const isFullyApproved = approvedCount === 3 || proposal.finalStatus === 'approved_for_action';
+          const isFullyApproved = approvedCount === 3 || proposal.finalStatus === 'approved_for_action' || proposal.finalStatus === 'for_interview';
 
           const candidates = proposal.candidates || [];
           const hasMultipleCandidates = candidates.length > 1;
@@ -251,10 +426,14 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           const myStatus = safeApprovals[mySigningRole as 'bishop' | 'first_counselor' | 'second_counselor']?.status || 'pending';
           const canCurrentUserSign = currentUser.isSuperAdmin || ['bishop', 'first_counselor', 'second_counselor'].includes(currentUser.role);
 
+          // Matching calling for additional context
+          const matchingCalling = allCallings.find(c => c.id === proposal.callingId);
+
           return (
             <div
               key={proposal.id}
               className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4"
+              id={`proposal-card-${proposal.id}`}
             >
               {/* Proposal Header */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-3 border-b border-slate-100">
@@ -267,6 +446,12 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
                         <Users className="w-3 h-3" />
                         <span>{candidates.length} Candidates to Discuss</span>
+                      </span>
+                    )}
+                    {isFullyApproved && (
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>3/3 Approved</span>
                       </span>
                     )}
                   </div>
@@ -293,7 +478,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               </div>
 
-              {/* Release / Target Call Context */}
+              {/* Release / Target Call Context Banner */}
               <div className="flex flex-wrap items-center gap-3 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
                 {proposal.type === 'release_and_replace' && proposal.currentMemberName ? (
                   <div className="flex items-center space-x-2">
@@ -309,7 +494,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 )}
 
                 <div className="flex items-center space-x-2 ml-auto">
-                  <span className="text-slate-400 font-medium">Consensus Candidate:</span>
+                  <span className="text-slate-400 font-medium">Proposed Candidate:</span>
                   {isUndecided ? (
                     <span className="inline-flex items-center space-x-1 font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-md border border-amber-300">
                       <HelpCircle className="w-3 h-3 text-amber-700" />
@@ -324,20 +509,22 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               </div>
 
-              {/* CANDIDATE DISCUSSION POOL SECTION */}
-              <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center space-x-2">
-                    <Users className="w-4 h-4 text-blue-600" />
-                    <span className="font-bold text-xs text-slate-800">
-                      Candidate Discussion & Consideration Pool
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      ({candidates.length} {candidates.length === 1 ? 'name' : 'names'} under review)
-                    </span>
-                  </div>
+              {/* ========================================================================= */}
+              {/* STAGE 1: CANDIDATE DISCUSSION POOL (for Pending Review or any discussion) */}
+              {/* ========================================================================= */}
+              {activeTab === 'pending' && (
+                <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                      <Users className="w-4 h-4 text-blue-600" />
+                      <span className="font-bold text-xs text-slate-800">
+                        Candidate Consideration Pool
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        ({candidates.length} {candidates.length === 1 ? 'name' : 'names'} under review)
+                      </span>
+                    </div>
 
-                  {proposal.finalStatus !== 'sustained' && (
                     <button
                       type="button"
                       onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
@@ -346,115 +533,112 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       <Plus className="w-3 h-3 text-blue-600" />
                       <span>+ Propose Additional Name</span>
                     </button>
-                  )}
-                </div>
-
-                {/* Inline Form to Add Alternative Candidate */}
-                {showAddCandidateMap[proposal.id] && (
-                  <div className="p-3 bg-white border border-blue-200 rounded-xl space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-800">Add Another Candidate for Discussion:</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: false }))}
-                        className="text-slate-400 hover:text-slate-600 text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        placeholder="Member name (e.g. Cruz, Mateo)..."
-                        value={newCandidateNameMap[proposal.id] || ''}
-                        onChange={(e) => setNewCandidateNameMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
-                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Note / rationale (e.g. active, strong teacher)..."
-                        value={newCandidateNoteMap[proposal.id] || ''}
-                        onChange={(e) => setNewCandidateNoteMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
-                        className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div className="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleAddNewCandidate(proposal.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>Add to Candidate Pool</span>
-                      </button>
-                    </div>
                   </div>
-                )}
 
-                {/* Candidate List Cards */}
-                {candidates.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    {candidates.map((cand) => {
-                      const isSelected = 
-                        cand.id === proposal.selectedCandidateId || 
-                        proposal.proposedMemberName.toLowerCase() === cand.name.toLowerCase();
-                      const existingCallings = getMemberCurrentCallings(cand.name);
-
-                      return (
-                        <div
-                          key={cand.id}
-                          className={`p-3 rounded-xl border transition-all space-y-2 relative ${
-                            isSelected
-                              ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/20 shadow-xs'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
+                  {/* Inline Form to Add Alternative Candidate */}
+                  {showAddCandidateMap[proposal.id] && (
+                    <div className="p-3 bg-white border border-blue-200 rounded-xl space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-slate-800">Add Another Candidate for Bishopric Discussion:</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: false }))}
+                          className="text-slate-400 hover:text-slate-600 text-xs"
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="space-y-0.5 flex-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-bold text-xs text-slate-900">
-                                  {cand.name}
-                                </span>
-                                {isSelected && (
-                                  <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.2 rounded-full flex items-center space-x-0.5">
-                                    <Check className="w-3 h-3" />
-                                    <span>Selected Choice</span>
+                          Cancel
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Member name (e.g. Cruz, Mateo)..."
+                          value={newCandidateNameMap[proposal.id] || ''}
+                          onChange={(e) => setNewCandidateNameMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                          className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Note / rationale (e.g. active, strong teacher)..."
+                          value={newCandidateNoteMap[proposal.id] || ''}
+                          onChange={(e) => setNewCandidateNoteMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                          className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleAddNewCandidate(proposal.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Add to Candidate Pool</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Candidate List Cards */}
+                  {candidates.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {candidates.map((cand) => {
+                        const isSelected = 
+                          cand.id === proposal.selectedCandidateId || 
+                          proposal.proposedMemberName.toLowerCase() === cand.name.toLowerCase();
+                        const existingCallings = getMemberCurrentCallings(cand.name);
+
+                        return (
+                          <div
+                            key={cand.id}
+                            className={`p-3 rounded-xl border transition-all space-y-2 relative ${
+                              isSelected
+                                ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/20 shadow-xs'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-0.5 flex-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-xs text-slate-900">
+                                    {cand.name}
                                   </span>
+                                  {isSelected && (
+                                    <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.2 rounded-full flex items-center space-x-0.5">
+                                      <Check className="w-3 h-3" />
+                                      <span>Active Choice</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {cand.note && (
+                                  <p className="text-[11px] text-slate-600 italic">
+                                    "{cand.note}"
+                                  </p>
                                 )}
                               </div>
 
-                              {cand.note && (
-                                <p className="text-[11px] text-slate-600 italic">
-                                  "{cand.note}"
-                                </p>
+                              {candidates.length > 1 && onRemoveCandidateFromProposal && (
+                                <button
+                                  type="button"
+                                  onClick={() => onRemoveCandidateFromProposal(proposal.id, cand.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                                  title="Remove candidate from pool"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               )}
                             </div>
 
-                            {/* Remove Candidate Option (if more than 1) */}
-                            {candidates.length > 1 && onRemoveCandidateFromProposal && proposal.finalStatus !== 'sustained' && (
-                              <button
-                                type="button"
-                                onClick={() => onRemoveCandidateFromProposal(proposal.id, cand.id)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                                title="Remove candidate from discussion"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                            {/* Existing Calling Badge (if any) */}
+                            {existingCallings.length > 0 && (
+                              <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center space-x-1">
+                                <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span>Currently: {existingCallings.map(c => `${c.title} (${c.organization})`).join(', ')}</span>
+                              </div>
                             )}
-                          </div>
 
-                          {/* Existing Calling Badge (if any) */}
-                          {existingCallings.length > 0 && (
-                            <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center space-x-1">
-                              <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span>Currently: {existingCallings.map(c => `${c.title} (${c.organization})`).join(', ')}</span>
-                            </div>
-                          )}
-
-                          {/* Selection Action Button */}
-                          {proposal.finalStatus !== 'sustained' && (
+                            {/* Selection Action Button */}
                             <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between">
                               <span className="text-[10px] text-slate-400">
                                 {cand.addedBy ? `Added by ${cand.addedBy}` : ''}
@@ -463,7 +647,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                               {isSelected ? (
                                 <span className="text-emerald-700 text-xs font-bold flex items-center space-x-1">
                                   <Check className="w-3.5 h-3.5" />
-                                  <span>Active Candidate</span>
+                                  <span>Selected for Vote</span>
                                 </span>
                               ) : (
                                 <button
@@ -476,22 +660,15 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                                 </button>
                               )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
-                    <span>No specific candidates entered in pool yet. Click "+ Propose Additional Name" to add candidates for comparison.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* General Proposal Context Note */}
-              {proposal.reasonNote && (
-                <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/50 text-xs text-slate-600">
-                  <span className="font-semibold text-slate-700">Proposal Context / Note:</span> {proposal.reasonNote}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
+                      <span>No candidates entered in pool yet. Click "+ Propose Additional Name" to add names for council deliberation.</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -499,7 +676,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
                   <span>3-Point Bishopric Approval Sign-Offs</span>
-                  <span className="text-[10px] text-slate-400">All 3 required for sustaining</span>
+                  <span className="text-[10px] text-slate-400">All 3 required for interview</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -554,6 +731,295 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               </div>
 
+              {/* ========================================================================= */}
+              {/* STAGE 2: FOR INTERVIEW SECTION                                            */}
+              {/* ========================================================================= */}
+              {activeTab === 'for_interview' && (
+                <div className="bg-indigo-50/60 rounded-xl p-4 border border-indigo-200/80 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200/60 pb-2.5">
+                    <div className="flex items-center space-x-2">
+                      <Mic className="w-4 h-4 text-indigo-600" />
+                      <span className="font-bold text-xs text-indigo-950">
+                        Interview &amp; Calling Extension Assignment
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-100/80 px-2.5 py-0.5 rounded-full">
+                      Candidate: <strong>{proposal.proposedMemberName}</strong>
+                    </span>
+                  </div>
+
+                  {/* Interviewer Selector & Schedule */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Assigned Interviewer:
+                      </label>
+                      <select
+                        value={assignedLeaderMap[proposal.id] || proposal.assignedInterviewerRole || 'bishop'}
+                        onChange={(e) => {
+                          const newRole = e.target.value as BishopricRole;
+                          setAssignedLeaderMap(prev => ({ ...prev, [proposal.id]: newRole }));
+                          const leader = BISHOPRIC_LEADERS[newRole];
+                          if (onAssignInterviewer) {
+                            onAssignInterviewer(
+                              proposal.id, 
+                              newRole, 
+                              leader.name, 
+                              interviewDateMap[proposal.id] || proposal.interviewDate,
+                              interviewNoteMap[proposal.id] || proposal.interviewNotes
+                            );
+                          }
+                        }}
+                        className="w-full text-xs font-semibold bg-white border border-indigo-200 rounded-xl p-2 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                      >
+                        <option value="bishop">Bishop (Francis Reyes)</option>
+                        <option value="first_counselor">1st Counselor (Jim Albos)</option>
+                        <option value="second_counselor">2nd Counselor (Alfred Ardon)</option>
+                        <option value="executive_secretary">Exec Secretary (Coordination)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Scheduled Interview Date:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Sunday, 1:30 PM / Oct 12"
+                        value={interviewDateMap[proposal.id] !== undefined ? interviewDateMap[proposal.id] : (proposal.interviewDate || '')}
+                        onChange={(e) => setInterviewDateMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                        onBlur={() => handleSaveInterviewAssignment(proposal)}
+                        className="w-full text-xs bg-white border border-indigo-200 rounded-xl p-2 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Private Interview Notes:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Spoke with spouse; will meet in office"
+                        value={interviewNoteMap[proposal.id] !== undefined ? interviewNoteMap[proposal.id] : (proposal.interviewNotes || '')}
+                        onChange={(e) => setInterviewNoteMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                        onBlur={() => handleSaveInterviewAssignment(proposal)}
+                        className="w-full text-xs bg-white border border-indigo-200 rounded-xl p-2 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Interview Actions Bar */}
+                  <div className="pt-2 border-t border-indigo-200/60 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] text-indigo-900 font-medium">
+                      {proposal.assignedInterviewer ? (
+                        <span>Assigned to: <strong>{proposal.assignedInterviewer}</strong> ({proposal.assignedInterviewerRole?.replace('_', ' ')})</span>
+                      ) : (
+                        <span>Select a Bishopric member above to assign this interview.</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      {/* Member Declined Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeclineModalProposal(proposal);
+                          setDeclineReasonText('');
+                        }}
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs px-3 py-1.5 rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer"
+                        title="If member declined, reset approvals and return to discussion pool"
+                        id={`btn-decline-interview-${proposal.id}`}
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Member Declined Calling</span>
+                      </button>
+
+                      {/* Interview Completed & Accepted Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const note = interviewNoteMap[proposal.id] || proposal.interviewNotes || 'Calling extended and accepted';
+                          if (onInterviewCompleted) {
+                            onInterviewCompleted(proposal.id, note);
+                          }
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+                        id={`btn-complete-interview-${proposal.id}`}
+                      >
+                        <CheckCheck className="w-4 h-4" />
+                        <span>✓ Interview Done &amp; Accepted</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* STAGE 3: FOR SUSTAINING SECTION                                           */}
+              {/* ========================================================================= */}
+              {activeTab === 'for_sustaining' && (
+                <div className="bg-emerald-50/60 rounded-xl p-4 border border-emerald-200/80 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-2.5">
+                    <div className="flex items-center space-x-2">
+                      <Users className="w-4 h-4 text-emerald-600" />
+                      <span className="font-bold text-xs text-emerald-950">
+                        Sacrament Meeting Sustaining Agenda
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                      Interview Verified • Ready for Ward Vote
+                    </span>
+                  </div>
+
+                  {/* Sustaining Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 space-y-1.5">
+                      <div className="font-bold text-slate-800">Sustaining Action:</div>
+                      <p className="text-slate-700">
+                        <strong>{proposal.proposedMemberName}</strong> as <strong>{proposal.callingTitle}</strong>
+                      </p>
+                      {proposal.currentMemberName && (
+                        <p className="text-[11px] text-slate-500">
+                          Release with a vote of thanks: <strong className="text-slate-700">{proposal.currentMemberName}</strong>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Sacrament Meeting Script:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopySustainingScript(proposal)}
+                          className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center space-x-1"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{copiedScriptId === proposal.id ? 'Copied!' : 'Copy Script'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-600 italic leading-relaxed">
+                        "It is proposed that {proposal.proposedMemberName} be sustained as {proposal.callingTitle}..."
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sustaining Action Bar */}
+                  <div className="pt-2 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] text-emerald-900">
+                      Once presented and sustained in sacrament meeting, click to update the active directory and advance to LCR recording.
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const date = sacramentDateMap[proposal.id] || new Date().toISOString().split('T')[0];
+                          onMarkSustained(proposal, date);
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+                        id={`btn-mark-sustained-${proposal.id}`}
+                      >
+                        <CheckCheck className="w-4 h-4" />
+                        <span>✓ Mark Sustained in Sacrament Meeting</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* STAGE 4: FOR RECORDING SECTION                                            */}
+              {/* ========================================================================= */}
+              {activeTab === 'for_recording' && (
+                <div className="bg-blue-50/60 rounded-xl p-4 border border-blue-200/80 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 pb-2.5">
+                    <div className="flex items-center space-x-2">
+                      <BookmarkCheck className="w-4 h-4 text-blue-600" />
+                      <span className="font-bold text-xs text-blue-950">
+                        Post-Sustaining Processing &amp; LCR Recording
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-blue-800 bg-blue-100 px-2.5 py-0.5 rounded-full">
+                      Sustained in Ward Meeting
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    {/* LCR Status Card */}
+                    <div className="bg-white/90 p-3 rounded-xl border border-blue-200/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Leader &amp; Clerk Resources (LCR):</span>
+                        {proposal.isRecordedInLCR ? (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Recorded in LCR</span>
+                          </span>
+                        ) : (
+                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Pending Entry in LCR</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-600">
+                        {proposal.isRecordedInLCR 
+                          ? `Recorded on ${proposal.recordedInLCRDate || 'recently'} by ${proposal.recordedByClerk || 'Ward Clerk'}`
+                          : 'Clerk must record this sustained calling in Church LCR system.'}
+                      </p>
+
+                      {!proposal.isRecordedInLCR && onMarkRecordedInLCR && (
+                        <button
+                          type="button"
+                          onClick={() => onMarkRecordedInLCR(proposal.id, 'Entry completed in Church LCR system', currentUser.name)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Mark Recorded in LCR</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Setting Apart Tracker */}
+                    <div className="bg-white/90 p-3 rounded-xl border border-blue-200/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Setting Apart Status:</span>
+                        {matchingCalling?.setApart ? (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            • Set Apart
+                          </span>
+                        ) : (
+                          <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            • Needs Setting Apart
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-600">
+                        {matchingCalling?.setApart
+                          ? 'Member has received priesthood blessing and is set apart in this calling.'
+                          : 'Member requires a priesthood blessing / setting apart by the Bishopric.'}
+                      </p>
+
+                      {onToggleSetApart && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleSetApart(proposal.callingId)}
+                          className={`font-bold text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1 ${
+                            matchingCalling?.setApart
+                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              : 'bg-purple-600 hover:bg-purple-700 text-white'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>{matchingCalling?.setApart ? 'Mark Needs Setting Apart' : 'Mark Set Apart'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* History Toggle */}
               {proposal.statusHistory && proposal.statusHistory.length > 0 && (
                 <div className="space-y-1.5">
@@ -564,7 +1030,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center space-x-1"
                     >
                       <History className="w-3 h-3 text-slate-400" />
-                      <span>Discussion & Action Log ({proposal.statusHistory.length})</span>
+                      <span>Discussion &amp; Action Log ({proposal.statusHistory.length})</span>
                       {showHistoryMap[proposal.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
 
@@ -598,38 +1064,9 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               )}
 
-              {/* Action Ready Status Guidance Banner */}
-              {proposal.finalStatus === 'approved_for_action' && (
-                <div className="p-2.5 bg-emerald-50/90 border border-emerald-200/90 rounded-xl text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>
-                      <strong>Action Ready:</strong> Calling recommendation is fully approved by Bishopric. Ready to extend call and present for sustaining in Sacrament Meeting.
-                    </span>
-                  </div>
-                  {isAdmin && onResetProposal && (
-                    <span className="text-[11px] text-emerald-800 font-medium shrink-0">
-                      Need reconsideration? Use <strong>Reset for Discussion</strong>.
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Declined Status Guidance Banner */}
-              {proposal.finalStatus === 'declined' && (
-                <div className="p-2.5 bg-rose-50/80 border border-rose-200/80 rounded-xl text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>
-                      <strong>Proposal Declined:</strong> Any leader who declined can change their decision above/below, or administrators can reset this proposal to bring it back into discussion.
-                    </span>
-                  </div>
-                </div>
-              )}
-
               {/* Actions Footer */}
               <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                {proposal.finalStatus !== 'sustained' && (
+                {proposal.finalStatus !== 'sustained' && proposal.finalStatus !== 'for_recording' && (
                   <div className="w-full sm:w-auto flex-1 max-w-md">
                     <input
                       type="text"
@@ -642,75 +1079,30 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 )}
 
                 <div className="flex flex-wrap items-center space-x-2 w-full sm:w-auto justify-end ml-auto">
-                  {/* Declined Status Actions */}
-                  {proposal.finalStatus === 'declined' && (
-                    <>
-                      {/* If user's own role was rejected, allow changing to approved or resetting */}
-                      {canCurrentUserSign && myStatus === 'rejected' && (
-                        <div className="flex items-center space-x-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'approved')}
-                            disabled={isUndecided}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center space-x-1.5 ${
-                              isUndecided
-                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Change My Decision to Approve</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'pending')}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center space-x-1"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Reset My Vote</span>
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Admin Reset Proposal Action */}
-                      {isAdmin && onResetProposal && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const reason = noteInputMap[proposal.id] || 'Reset declined proposal for bishopric review';
-                            onResetProposal(proposal.id, reason);
-                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
-                          }}
-                          className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5"
-                          title="Reset all 3 sign-offs to pending and bring back for review"
-                          id={`btn-reset-declined-${proposal.id}`}
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Reset for Discussion</span>
-                        </button>
-                      )}
-
-                      {/* Super Admin Approve All Action */}
-                      {currentUser.isSuperAdmin && onSuperAdminApproveAll && (
-                        <button
-                          type="button"
-                          onClick={() => onSuperAdminApproveAll(proposal.id)}
-                          disabled={isUndecided}
-                          className={`font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1 ${
-                            isUndecided
-                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                              : 'bg-blue-600 hover:bg-blue-700 text-white'
-                          }`}
-                        >
-                          <Zap className="w-3.5 h-3.5" />
-                          <span>Approve All 3</span>
-                        </button>
-                      )}
-                    </>
+                  
+                  {/* Universal Admin Reset for Discussion Button */}
+                  {isAdmin && onResetProposal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const customNote = noteInputMap[proposal.id];
+                        const reason = customNote && customNote.trim() 
+                          ? customNote.trim() 
+                          : `Reset from ${activeTab.replace('_', ' ')} for Bishopric discussion`;
+                        onResetProposal(proposal.id, reason);
+                        setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
+                      }}
+                      className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+                      title="Reset all 3 approvals to pending and return to Pending Review for further discussion"
+                      id={`btn-reset-discussion-${proposal.id}`}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Reset for Discussion</span>
+                    </button>
                   )}
 
-                  {/* Pending Review Actions */}
-                  {proposal.finalStatus === 'pending_review' && canCurrentUserSign && (
+                  {/* Pending Review Voting Actions */}
+                  {activeTab === 'pending' && canCurrentUserSign && (
                     <>
                       {myStatus === 'approved' ? (
                         <div className="flex items-center space-x-2">
@@ -750,24 +1142,6 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         </>
                       )}
 
-                      {/* Admin Reset in Pending View */}
-                      {isAdmin && onResetProposal && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const reason = noteInputMap[proposal.id] || 'Reset all votes to pending';
-                            onResetProposal(proposal.id, reason);
-                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
-                          }}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-1.5 px-2.5 rounded-xl transition-colors border border-slate-200 flex items-center space-x-1"
-                          title="Reset all votes to pending"
-                          id={`btn-reset-votes-${proposal.id}`}
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Reset Votes</span>
-                        </button>
-                      )}
-
                       {/* Super Admin Quick Approve All in Pending View */}
                       {currentUser.isSuperAdmin && !isFullyApproved && onSuperAdminApproveAll && (
                         <button
@@ -787,40 +1161,33 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </>
                   )}
 
-                  {/* Fully Approved / Action Ready Actions */}
-                  {isFullyApproved && proposal.finalStatus !== 'sustained' && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* Admin Reset Proposal on Action Ready Tab */}
-                      {isAdmin && onResetProposal && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const customNote = noteInputMap[proposal.id];
-                            const reason = customNote && customNote.trim() 
-                              ? customNote.trim() 
-                              : 'Re-opened from Action Ready queue for bishopric discussion';
-                            onResetProposal(proposal.id, reason);
-                            setNoteInputMap(prev => ({ ...prev, [proposal.id]: '' }));
-                          }}
-                          className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs py-1.5 px-3 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
-                          title="Reset 3-point approvals to pending and bring calling back to Pending Review for further discussion"
-                          id={`btn-reset-action-ready-${proposal.id}`}
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                          <span>Reset for Discussion</span>
-                        </button>
-                      )}
-
+                  {/* Declined Status Specific Actions */}
+                  {activeTab === 'declined' && canCurrentUserSign && myStatus === 'rejected' && (
+                    <div className="flex items-center space-x-1.5">
                       <button
-                        onClick={() => onSustainCalling(proposal)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-1.5 px-4 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 cursor-pointer"
-                        id={`btn-sustain-${proposal.id}`}
+                        type="button"
+                        onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'approved')}
+                        disabled={isUndecided}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center space-x-1.5 ${
+                          isUndecided
+                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
                       >
-                        <CheckCheck className="w-4 h-4" />
-                        <span>Mark Sustained in Ward Meeting</span>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Change My Decision to Approve</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleActionForRole(proposal.id, effectiveSigningRole, 'pending')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors flex items-center space-x-1"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Reset My Vote</span>
                       </button>
                     </div>
                   )}
+
                 </div>
               </div>
 
@@ -831,14 +1198,65 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
         {displayedProposals.length === 0 && (
           <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center space-y-2">
             <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto" />
-            <h3 className="text-sm font-bold text-slate-700">No Proposals in Queue</h3>
-            <p className="text-xs text-slate-400">Proposals will appear here as leaders submit recommendations.</p>
+            <h3 className="text-sm font-bold text-slate-700">No Proposals in this Stage</h3>
+            <p className="text-xs text-slate-400">
+              {activeTab === 'pending' && 'Proposals awaiting Bishopric review will appear here.'}
+              {activeTab === 'for_interview' && 'Proposals with all 3 Bishopric sign-offs will appear here for interview assignment.'}
+              {activeTab === 'for_sustaining' && 'Proposals with completed and accepted interviews will appear here for sacrament meeting.'}
+              {activeTab === 'for_recording' && 'Callings sustained in sacrament meeting will appear here for LCR clerk entry.'}
+              {activeTab === 'declined' && 'No declined proposals currently on file.'}
+            </p>
           </div>
         )}
       </div>
 
+      {/* Decline Reason Modal */}
+      {declineModalProposal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900">Record Member Decline</h3>
+              <button
+                onClick={() => setDeclineModalProposal(null)}
+                className="text-slate-400 hover:text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              <strong>{declineModalProposal.proposedMemberName}</strong> was unable to accept the calling as <strong>{declineModalProposal.callingTitle}</strong>. 
+              Submitting will record the reason, reset the 3-point sign-offs to pending, and bring the calling back into <strong>Pending Review</strong> so the Bishopric can discuss alternate candidate names.
+            </p>
+
+            <textarea
+              placeholder="Enter reason / notes (e.g. personal circumstances, health, scheduling, work conflicts)..."
+              value={declineReasonText}
+              onChange={(e) => setDeclineReasonText(e.target.value)}
+              rows={3}
+              className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500/20 focus:outline-none"
+            />
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeclineModalProposal(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDecline}
+                className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-2xs"
+              >
+                Reset for Discussion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
-
-
