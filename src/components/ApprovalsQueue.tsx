@@ -102,7 +102,6 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
 
   // Sustaining stage state
   const [sacramentDateMap, setSacramentDateMap] = useState<Record<string, string>>({});
-  const [copiedScriptId, setCopiedScriptId] = useState<string | null>(null);
 
   // Decline modal state
   const [declineModalProposal, setDeclineModalProposal] = useState<CallingProposal | null>(null);
@@ -192,14 +191,6 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
     if (onAssignInterviewer) {
       onAssignInterviewer(proposal.id, role, leaderInfo.name, date, note);
     }
-  };
-
-  // Copy Sunday sustaining script to clipboard
-  const handleCopySustainingScript = (proposal: CallingProposal) => {
-    const script = `It is proposed that ${proposal.proposedMemberName} be sustained as ${proposal.callingTitle} in the ${proposal.organization}${proposal.subOrg ? ` (${proposal.subOrg})` : ''}. Those in favor may manifest it by the uplifted hand. [Pause] Those opposed, if any, may manifest it.`;
-    navigator.clipboard.writeText(script);
-    setCopiedScriptId(proposal.id);
-    setTimeout(() => setCopiedScriptId(null), 3000);
   };
 
   // Submit Member Decline modal
@@ -871,36 +862,29 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </span>
                   </div>
 
-                  {/* Sustaining Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 space-y-1.5">
-                      <div className="font-bold text-slate-800">Sustaining Action:</div>
-                      <p className="text-slate-700">
-                        <strong>{proposal.proposedMemberName}</strong> as <strong>{proposal.callingTitle}</strong>
-                      </p>
-                      {proposal.currentMemberName && (
-                        <p className="text-[11px] text-slate-500">
-                          Release with a vote of thanks: <strong className="text-slate-700">{proposal.currentMemberName}</strong>
-                        </p>
-                      )}
+                  {/* Sustaining Details Card */}
+                  <div className="bg-white/90 p-3.5 rounded-xl border border-emerald-200/60 space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Sustaining Calling</span>
+                        <div className="font-bold text-slate-900 text-sm">
+                          {proposal.callingTitle}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Proposed Member</span>
+                        <div className="font-bold text-emerald-800 text-sm">
+                          {proposal.proposedMemberName}
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800">Sacrament Meeting Script:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopySustainingScript(proposal)}
-                          className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center space-x-1"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>{copiedScriptId === proposal.id ? 'Copied!' : 'Copy Script'}</span>
-                        </button>
+                    {proposal.currentMemberName && (
+                      <div className="pt-2 border-t border-slate-100 flex items-center space-x-2 text-[11px] text-slate-600">
+                        <span className="text-slate-400 font-medium">Releasing Member (vote of thanks):</span>
+                        <strong className="text-slate-800 font-semibold">{proposal.currentMemberName}</strong>
                       </div>
-                      <p className="text-[11px] text-slate-600 italic leading-relaxed">
-                        "It is proposed that {proposal.proposedMemberName} be sustained as {proposal.callingTitle}..."
-                      </p>
-                    </div>
+                    )}
                   </div>
 
                   {/* Sustaining Action Bar */}
