@@ -77,6 +77,7 @@ interface ApprovalsQueueProps {
       note?: string;
     }
   ) => Promise<void> | void;
+  onProposeForCalling?: (calling?: Calling) => void;
   activeSubTab?: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined';
   onSubTabChange?: (tab: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined') => void;
 }
@@ -112,6 +113,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   onSuperAdminApproveAll,
   onDeleteProposal,
   onEditProposalCalling,
+  onProposeForCalling,
   activeSubTab = 'pending',
   onSubTabChange,
 }) => {
@@ -453,6 +455,19 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           )}
         </button>
 
+        {/* Propose Candidate / Calling Action Button */}
+        {onProposeForCalling && (
+          <button
+            type="button"
+            onClick={() => onProposeForCalling()}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors shadow-2xs flex items-center space-x-1.5 shrink-0 cursor-pointer ml-auto sm:ml-0"
+            id="btn-propose-candidate-top"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Propose Candidate</span>
+          </button>
+        )}
+
         {/* Clear All Logs Action (Executive Secretary Only) */}
         {currentUser.isSuperAdmin && onClearAllLogs && (
           <button
@@ -541,9 +556,27 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
           const pendingCount = 3 - approvedCount - rejectedCount;
           const isFullyApproved = approvedCount === 3 || proposal.finalStatus === 'approved_for_action' || proposal.finalStatus === 'for_interview';
 
-          const candidates = proposal.candidates || [];
+          const rawCandidates = proposal.candidates || [];
+          const hasInitialPerson = Boolean(
+            proposal.proposedMemberName && !proposal.proposedMemberName.toLowerCase().includes('to be discussed')
+          );
+
+          // Synthesize candidate list: if rawCandidates has items, use them;
+          // if rawCandidates is empty but a specific member is proposed, synthesize that member as the initial candidate so they appear in the pool and are preserved when adding alternatives!
+          const candidates: CandidateOption[] = rawCandidates.length > 0
+            ? rawCandidates
+            : hasInitialPerson
+              ? [{
+                  id: proposal.selectedCandidateId || `cand-primary-${proposal.id}`,
+                  name: proposal.proposedMemberName,
+                  addedBy: proposal.proposedByName || 'Initial Recommendation',
+                  dateAdded: proposal.dateProposed || 'Initial',
+                  isSelected: true,
+                }]
+              : [];
+
           const hasMultipleCandidates = candidates.length > 1;
-          const isUndecided = !proposal.proposedMemberName || proposal.proposedMemberName.toLowerCase().includes('to be discussed');
+          const isUndecided = !hasInitialPerson && candidates.length === 0;
 
           // User's own approval status
           const mySigningRole = effectiveSigningRole === 'executive_secretary' ? 'bishop' : effectiveSigningRole;
@@ -690,7 +723,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
               {/* ========================================================================= */}
               {/* CANDIDATE DISCUSSION POOL & POLLING (Pending or Declined/For Discussion)  */}
               {/* ========================================================================= */}
-              {(hasMultipleCandidates || activeTab === 'declined' || isUndecided) && (
+              {(hasMultipleCandidates || activeTab === 'pending' || activeTab === 'declined' || isUndecided || showAddCandidateMap[proposal.id]) && (
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center space-x-1.5">
@@ -700,14 +733,15 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                       </span>
                     </div>
 
-                    {(activeTab === 'pending' || activeTab === 'declined') && (
+                    {(activeTab === 'pending' || activeTab === 'declined' || activeTab === 'for_interview') && (
                       <button
                         type="button"
                         onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center space-x-1 cursor-pointer"
+                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center space-x-1 cursor-pointer px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                        id={`btn-propose-alt-cand-${proposal.id}`}
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add Candidate to Poll</span>
+                        <span>{showAddCandidateMap[proposal.id] ? 'Hide Candidate Form' : 'Propose Alternative Candidate'}</span>
                       </button>
                     )}
                   </div>
@@ -778,46 +812,65 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </div>
                   ) : (
                     <div className="text-center p-3 text-xs text-slate-400 dark:text-slate-500 bg-white/60 dark:bg-slate-800/60 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
-                      No specific candidates added yet. Click &quot;Add Candidate to Poll&quot; to begin polling names.
+                      No specific candidates added yet. Click &quot;Propose Alternative Candidate&quot; to begin polling names.
                     </div>
                   )}
 
                   {/* Inline Add Candidate Form */}
                   {showAddCandidateMap[proposal.id] && (
-                    <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl border border-blue-200 dark:border-blue-800 space-y-2 shadow-2xs">
+                    <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-blue-200 dark:border-blue-800 space-y-2.5 shadow-2xs animate-in fade-in duration-150">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-blue-900 dark:text-blue-300">
-                          Add Candidate Name to Council Discussion Pool
-                        </span>
+                        <div className="flex items-center space-x-1.5">
+                          <UserPlus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          <span className="font-bold text-xs text-blue-900 dark:text-blue-300">
+                            Propose Alternative Candidate for this Calling
+                          </span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: false }))}
-                          className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                          className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-1 rounded-md"
                         >
                           ✕
                         </button>
                       </div>
                       <div className="flex flex-col sm:flex-row items-center gap-2">
+                        <div className="flex-1 w-full">
+                          <input
+                            type="text"
+                            placeholder="Enter candidate full name..."
+                            value={newCandidateNameMap[proposal.id] || ''}
+                            onChange={(e) => setNewCandidateNameMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddNewCandidate(proposal.id);
+                              }
+                            }}
+                            className="w-full text-xs p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            autoFocus
+                          />
+                        </div>
                         <input
                           type="text"
-                          placeholder="Enter candidate full name..."
-                          value={newCandidateNameMap[proposal.id] || ''}
-                          onChange={(e) => setNewCandidateNameMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
-                          className="flex-1 w-full text-xs p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Optional rationale/notes..."
+                          placeholder="Optional rationale/notes (e.g. available, prior service)..."
                           value={newCandidateNoteMap[proposal.id] || ''}
                           onChange={(e) => setNewCandidateNoteMap(prev => ({ ...prev, [proposal.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddNewCandidate(proposal.id);
+                            }
+                          }}
                           className="flex-1 w-full text-xs p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                         />
                         <button
                           type="button"
                           onClick={() => handleAddNewCandidate(proposal.id)}
-                          className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                          className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors shadow-2xs cursor-pointer whitespace-nowrap flex items-center justify-center space-x-1"
                         >
-                          Add to Pool
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add to Pool</span>
                         </button>
                       </div>
                     </div>
@@ -825,25 +878,14 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                 </div>
               )}
 
-              {/* Single candidate non-pool view in other stages */}
-              {!hasMultipleCandidates && activeTab !== 'declined' && !isUndecided && (
+              {/* Single candidate non-pool view in other stages (Interview, Sustaining, Recording) */}
+              {!hasMultipleCandidates && activeTab !== 'pending' && activeTab !== 'declined' && !isUndecided && (
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   {getMemberCurrentCallings(proposal.proposedMemberName).length > 0 ? (
                     <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-200/60 dark:border-amber-800/60">
                       Currently holds: <strong>{getMemberCurrentCallings(proposal.proposedMemberName).map(c => c.title).join(', ')}</strong>
                     </div>
                   ) : <div />}
-
-                  {activeTab === 'pending' && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddCandidateMap(prev => ({ ...prev, [proposal.id]: !prev[proposal.id] }))}
-                      className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 flex items-center space-x-1 cursor-pointer ml-auto"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Propose Alternative Candidate</span>
-                    </button>
-                  )}
                 </div>
               )}
 

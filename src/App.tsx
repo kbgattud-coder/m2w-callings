@@ -378,8 +378,8 @@ export default function App() {
     }
   };
 
-  const handleOpenProposeForCalling = (calling: Calling) => {
-    setProposalTargetCalling(calling);
+  const handleOpenProposeForCalling = (calling?: Calling | null) => {
+    setProposalTargetCalling(calling || null);
     setIsProposalModalOpen(true);
   };
 
@@ -1076,30 +1076,51 @@ export default function App() {
     const todayStr = new Date().toISOString().split('T')[0];
     const actorName = currentUser ? `${currentUser.name} (${currentUser.calling})` : BISHOPRIC_LEADERS[activeRole].name;
 
+    let existingCandidates = prop.candidates ? [...prop.candidates] : [];
+    const hasInitialMember = Boolean(
+      prop.proposedMemberName && !prop.proposedMemberName.toLowerCase().includes('to be discussed')
+    );
+
+    // If there were no candidates in the array yet, but a proposedMemberName was already set,
+    // preserve that original person as the leading candidate!
+    if (existingCandidates.length === 0 && hasInitialMember) {
+      existingCandidates = [
+        {
+          id: prop.selectedCandidateId || `cand-orig-${Date.now()}`,
+          name: prop.proposedMemberName,
+          addedBy: prop.proposedByName || 'Initial Recommendation',
+          dateAdded: prop.dateProposed || todayStr,
+          isSelected: true,
+        }
+      ];
+    }
+
+    const isUndecided = !hasInitialMember && existingCandidates.length === 0;
+    const shouldAutoSelect = isUndecided;
+
     const newCandidate: CandidateOption = {
       id: `cand-${Date.now()}`,
       name: candidateName.trim(),
       note: note?.trim() || undefined,
       addedBy: actorName,
       dateAdded: todayStr,
-      isSelected: false,
+      isSelected: shouldAutoSelect,
     };
-
-    const existingCandidates = prop.candidates || [];
-    const shouldAutoSelect = existingCandidates.length === 0 || prop.proposedMemberName.toLowerCase().includes('to be discussed');
 
     const updatedCandidates = [
       ...existingCandidates.map(c => shouldAutoSelect ? { ...c, isSelected: false } : c),
-      { ...newCandidate, isSelected: shouldAutoSelect }
+      newCandidate
     ];
 
     const updatedProposal: CallingProposal = {
       ...prop,
       proposedMemberName: shouldAutoSelect ? newCandidate.name : prop.proposedMemberName,
-      selectedCandidateId: shouldAutoSelect ? newCandidate.id : prop.selectedCandidateId,
+      selectedCandidateId: shouldAutoSelect 
+        ? newCandidate.id 
+        : (prop.selectedCandidateId || existingCandidates[0]?.id),
       candidates: updatedCandidates,
       statusHistory: [
-        ...prop.statusHistory,
+        ...(prop.statusHistory || []),
         {
           date: todayStr,
           action: `Added alternative candidate to pool: ${newCandidate.name}`,
@@ -1553,7 +1574,83 @@ export default function App() {
     candidates?: CandidateOption[];
     selectedCandidateId?: string;
   }) => {
-    const todayStr = '2026-07-26';
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Check if an active proposal already exists for this calling in Stage 1 (pending_review)
+    const existingActiveProposal = proposals.find(
+      p => p.callingId === data.callingId && p.finalStatus === 'pending_review'
+    );
+
+    if (existingActiveProposal) {
+      // Merge newly submitted candidate(s) into the existing proposal's candidate pool
+      const incomingCandidates: CandidateOption[] = data.candidates && data.candidates.length > 0
+        ? data.candidates
+        : (data.proposedMemberName && !data.proposedMemberName.toLowerCase().includes('to be discussed'))
+          ? [{
+              id: `cand-${Date.now()}`,
+              name: data.proposedMemberName,
+              note: data.reasonNote || undefined,
+              addedBy: data.proposedByName,
+              dateAdded: todayStr,
+              isSelected: false,
+            }]
+          : [];
+
+      // Existing candidates or synthesized original candidate
+      const existingCandidates: CandidateOption[] = existingActiveProposal.candidates && existingActiveProposal.candidates.length > 0
+        ? [...existingActiveProposal.candidates]
+        : (existingActiveProposal.proposedMemberName && !existingActiveProposal.proposedMemberName.toLowerCase().includes('to be discussed'))
+          ? [{
+              id: existingActiveProposal.selectedCandidateId || `cand-orig-${Date.now()}`,
+              name: existingActiveProposal.proposedMemberName,
+              addedBy: existingActiveProposal.proposedByName || 'Initial Recommendation',
+              dateAdded: existingActiveProposal.dateProposed || todayStr,
+              isSelected: true,
+            }]
+          : [];
+
+      const mergedCandidates = [...existingCandidates];
+      const addedNames: string[] = [];
+
+      incomingCandidates.forEach(inc => {
+        if (!mergedCandidates.some(ec => ec.name.toLowerCase() === inc.name.toLowerCase())) {
+          mergedCandidates.push({
+            ...inc,
+            isSelected: false,
+          });
+          addedNames.push(inc.name);
+        }
+      });
+
+      const updatedProposal: CallingProposal = {
+        ...existingActiveProposal,
+        candidates: mergedCandidates,
+        statusHistory: [
+          ...(existingActiveProposal.statusHistory || []),
+          {
+            date: todayStr,
+            action: addedNames.length > 0 
+              ? `Added alternative candidate(s) to council discussion pool: ${addedNames.join(', ')}`
+              : 'Updated proposal notes and candidate discussion pool',
+            actor: data.proposedByName,
+            note: data.reasonNote ? `Reason: ${data.reasonNote}` : undefined,
+          }
+        ]
+      };
+
+      setProposals(prev => prev.map(p => p.id === updatedProposal.id ? updatedProposal : p));
+      setActiveTab('needs_approval');
+
+      setSyncStatus('syncing');
+      try {
+        await saveProposalToFirestore(updatedProposal);
+        setSyncStatus('connected');
+      } catch (e) {
+        console.error('Failed to sync merged proposal candidate pool to Firestore:', e);
+        setSyncStatus('error');
+      }
+      return;
+    }
 
     const initialApprovals = {
       bishop: { status: 'pending' as ApprovalStatus },
@@ -1840,6 +1937,7 @@ export default function App() {
               onSuperAdminApproveAll={handleSuperAdminApproveAll}
               onDeleteProposal={handleDeleteProposal}
               onEditProposalCalling={handleEditProposalCalling}
+              onProposeForCalling={handleOpenProposeForCalling}
               activeSubTab={approvalsSubTab}
               onSubTabChange={setApprovalsSubTab}
             />
