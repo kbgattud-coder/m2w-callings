@@ -47,6 +47,7 @@ import { CallingDetailModal } from './components/CallingDetailModal';
 import { AddCustomCallingModal } from './components/AddCustomCallingModal';
 import { ManualCallingModal } from './components/ManualCallingModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { EditProposalCallingModal } from './components/EditProposalCallingModal';
 import { calculateTenure, getTodayDateString } from './utils/tenure';
 import { sortCallings } from './utils/callingSort';
 
@@ -160,6 +161,7 @@ export default function App() {
   const [isAddCustomModalOpen, setIsAddCustomModalOpen] = useState(false);
   const [isManualCallingModalOpen, setIsManualCallingModalOpen] = useState(false);
   const [manualCallingTarget, setManualCallingTarget] = useState<Calling | null>(null);
+  const [superAdminEditProposal, setSuperAdminEditProposal] = useState<CallingProposal | null>(null);
 
   // In-app Confirmation Modal State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -1368,6 +1370,175 @@ export default function App() {
     });
   };
 
+  // Super Admin: Move / Edit calling once approved or in-flight
+  const handleEditProposalCalling = async (
+    proposalId: string,
+    newCallingData: {
+      callingId?: string;
+      callingTitle: string;
+      organization: string;
+      subOrg: string;
+      memberName?: string;
+      currentMemberName?: string | null;
+      note?: string;
+    }
+  ) => {
+    const targetProposal = proposals.find(p => p.id === proposalId);
+    if (!targetProposal) return;
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const actorName = currentUser ? `${currentUser.name} (Super Admin)` : 'Super Admin';
+    const oldCallingTitle = targetProposal.callingTitle;
+    const oldOrg = targetProposal.organization;
+    const oldCallingId = targetProposal.callingId;
+    const newMemberName = newCallingData.memberName || targetProposal.proposedMemberName;
+
+    // Determine if proposal was already sustained into directory (e.g. for_recording or sustained)
+    const isAlreadySustained = 
+      targetProposal.finalStatus === 'for_recording' || 
+      targetProposal.finalStatus === 'sustained';
+
+    let updatedCallingsList = [...callings];
+    const callingsToSave: Calling[] = [];
+
+    // If already sustained into directory, free up old calling if it holds this candidate
+    if (isAlreadySustained && oldCallingId) {
+      const oldCalling = updatedCallingsList.find(c => c.id === oldCallingId);
+      if (oldCalling && oldCalling.memberName === targetProposal.proposedMemberName) {
+        const freedOldCalling: Calling = {
+          ...oldCalling,
+          memberName: null,
+          isVacant: true,
+          sustainedDate: null,
+          setApart: false,
+        };
+        updatedCallingsList = updatedCallingsList.map(c => c.id === oldCallingId ? freedOldCalling : c);
+        callingsToSave.push(freedOldCalling);
+      }
+    }
+
+    // Resolve target calling in the directory
+    let targetCallingId = newCallingData.callingId;
+    if (targetCallingId) {
+      const targetCalling = updatedCallingsList.find(c => c.id === targetCallingId);
+      if (targetCalling && isAlreadySustained) {
+        const occupiedCalling: Calling = {
+          ...targetCalling,
+          memberName: newMemberName,
+          sustainedDate: targetProposal.sustainedDate || todayIso,
+          setApart: false,
+          isVacant: false,
+        };
+        updatedCallingsList = updatedCallingsList.map(c => c.id === targetCalling.id ? occupiedCalling : c);
+        callingsToSave.push(occupiedCalling);
+      }
+    } else {
+      // Check if calling with same title and org already exists
+      const existing = updatedCallingsList.find(
+        c => c.title.toLowerCase() === newCallingData.callingTitle.toLowerCase() &&
+             c.organization.toLowerCase() === newCallingData.organization.toLowerCase()
+      );
+      if (existing) {
+        targetCallingId = existing.id;
+        if (isAlreadySustained) {
+          const occupiedCalling: Calling = {
+            ...existing,
+            memberName: newMemberName,
+            sustainedDate: targetProposal.sustainedDate || todayIso,
+            setApart: false,
+            isVacant: false,
+          };
+          updatedCallingsList = updatedCallingsList.map(c => c.id === existing.id ? occupiedCalling : c);
+          callingsToSave.push(occupiedCalling);
+        }
+      } else {
+        // Create custom calling entry in directory
+        const newCallingEntry: Calling = {
+          id: `calling-${Date.now()}`,
+          organization: newCallingData.organization,
+          subOrg: newCallingData.subOrg,
+          title: newCallingData.callingTitle,
+          memberName: isAlreadySustained ? newMemberName : null,
+          sustainedDate: isAlreadySustained ? (targetProposal.sustainedDate || todayIso) : null,
+          setApart: false,
+          isVacant: !isAlreadySustained,
+          isCustom: true,
+        };
+        targetCallingId = newCallingEntry.id;
+        updatedCallingsList.push(newCallingEntry);
+        callingsToSave.push(newCallingEntry);
+      }
+    }
+
+    const actionText = `Calling reassigned from "${oldCallingTitle}" (${oldOrg}) to "${newCallingData.callingTitle}" (${newCallingData.organization}) by Super Admin`;
+    const updatedProposal: CallingProposal = {
+      ...targetProposal,
+      callingId: targetCallingId || oldCallingId,
+      callingTitle: newCallingData.callingTitle,
+      organization: newCallingData.organization,
+      subOrg: newCallingData.subOrg,
+      proposedMemberName: newMemberName,
+      currentMemberName: newCallingData.currentMemberName !== undefined ? newCallingData.currentMemberName : targetProposal.currentMemberName,
+      statusHistory: [
+        ...(targetProposal.statusHistory || []),
+        {
+          date: todayIso,
+          action: actionText,
+          actor: actorName,
+          note: newCallingData.note || `Moved candidate ${newMemberName} to ${newCallingData.callingTitle}`,
+        }
+      ]
+    };
+
+    // Update local state
+    if (callingsToSave.length > 0) {
+      setCallings(sortCallings(updatedCallingsList));
+    }
+    setProposals(prev => prev.map(p => p.id === proposalId ? updatedProposal : p));
+
+    // Post to Council Message Board
+    const now = new Date();
+    const formattedTime = now.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    const noticeMsg: CouncilMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      proposalId,
+      callingId: targetCallingId || oldCallingId,
+      callingTitle: newCallingData.callingTitle,
+      organization: newCallingData.organization,
+      authorName: currentUser?.name || 'Super Admin',
+      authorRole: 'Super Admin',
+      authorCalling: 'Super Admin',
+      authorId: currentUser?.id,
+      text: `[Calling Moved by Super Admin]: Candidate ${newMemberName} reassigned from "${oldCallingTitle}" (${oldOrg}) to "${newCallingData.callingTitle}" (${newCallingData.organization}). ${newCallingData.note ? `Note: ${newCallingData.note}` : ''}`,
+      createdAt: now.toISOString(),
+      timestampFormatted: formattedTime,
+      tag: 'general',
+    };
+    setCouncilMessages(prev => [...prev, noticeMsg]);
+    saveCouncilMessageToFirestore(noticeMsg).catch(err => console.error(err));
+
+    // Sync to Firestore
+    setSyncStatus('syncing');
+    try {
+      const promises: Promise<any>[] = [saveProposalToFirestore(updatedProposal)];
+      for (const c of callingsToSave) {
+        promises.push(saveCallingToFirestore(c));
+      }
+      await Promise.all(promises);
+      setSyncStatus('connected');
+    } catch (err) {
+      console.error('Failed to sync reassigned calling to Firestore:', err);
+      setSyncStatus('error');
+    }
+  };
+
   // Create New Calling Proposal
   const handleCreateProposal = async (data: {
     callingId: string;
@@ -1668,6 +1839,7 @@ export default function App() {
               onCloseDiscussion={handleCloseDiscussion}
               onSuperAdminApproveAll={handleSuperAdminApproveAll}
               onDeleteProposal={handleDeleteProposal}
+              onEditProposalCalling={handleEditProposalCalling}
               activeSubTab={approvalsSubTab}
               onSubTabChange={setApprovalsSubTab}
             />
@@ -1737,6 +1909,7 @@ export default function App() {
         onDeleteCalling={handleDeleteCalling}
         onDeleteProposal={handleDeleteProposal}
         onResetProposal={handleResetProposal}
+        onEditProposalCalling={(proposal) => setSuperAdminEditProposal(proposal)}
       />
 
       <AddCustomCallingModal
@@ -1759,6 +1932,17 @@ export default function App() {
         onSaveCalling={handleDirectUpdateCalling}
         currentUser={currentUser}
       />
+
+      {/* Super Admin Move / Edit Calling Modal (Invoked from Calling Detail or Directory) */}
+      {superAdminEditProposal && (
+        <EditProposalCallingModal
+          isOpen={!!superAdminEditProposal}
+          onClose={() => setSuperAdminEditProposal(null)}
+          proposal={superAdminEditProposal}
+          allCallings={callings}
+          onConfirm={handleEditProposalCalling}
+        />
+      )}
 
       {confirmDialog && (
         <ConfirmModal

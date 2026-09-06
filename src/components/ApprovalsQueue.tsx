@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BishopricRole, CallingProposal, ApprovalStatus, AuthUser, Calling, CandidateOption, CouncilMessage } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
 import { getUpcomingSunday, formatDateReadable } from '../utils/dateUtils';
+import { EditProposalCallingModal } from './EditProposalCallingModal';
 import { 
   CheckCircle2, 
   Clock, 
@@ -26,6 +27,7 @@ import {
   BookmarkCheck,
   Sparkles,
   ArrowRight,
+  ArrowRightLeft,
   UserX,
   Send,
   AlertTriangle,
@@ -63,6 +65,18 @@ interface ApprovalsQueueProps {
   onCloseDiscussion?: (proposalId: string, note?: string) => void;
   onSuperAdminApproveAll?: (proposalId: string) => void;
   onDeleteProposal?: (proposalId: string, title?: string) => void;
+  onEditProposalCalling?: (
+    proposalId: string, 
+    newCallingData: {
+      callingId?: string;
+      callingTitle: string;
+      organization: string;
+      subOrg: string;
+      memberName?: string;
+      currentMemberName?: string | null;
+      note?: string;
+    }
+  ) => Promise<void> | void;
   activeSubTab?: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined';
   onSubTabChange?: (tab: 'pending' | 'for_interview' | 'for_sustaining' | 'for_recording' | 'declined') => void;
 }
@@ -97,6 +111,7 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   onCloseDiscussion,
   onSuperAdminApproveAll,
   onDeleteProposal,
+  onEditProposalCalling,
   activeSubTab = 'pending',
   onSubTabChange,
 }) => {
@@ -127,6 +142,9 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
   const [declineModalProposal, setDeclineModalProposal] = useState<CallingProposal | null>(null);
   const [declineReasonText, setDeclineReasonText] = useState('');
   const [declinePromoteCandidateId, setDeclinePromoteCandidateId] = useState<string>('');
+
+  // Super Admin: Move / Edit calling modal state
+  const [editCallingModalProposal, setEditCallingModalProposal] = useState<CallingProposal | null>(null);
 
   // Stage 1: Disapprove / For Discussion Vote Modal
   const [discussionVoteModal, setDiscussionVoteModal] = useState<{ proposal: CallingProposal; role: BishopricRole } | null>(null);
@@ -582,17 +600,33 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                   </div>
 
                   {/* Calling Position (Calling when confirmed in Stage 3/4 vs Proposed Calling in Stage 1/Discussion) */}
-                  <div className="flex items-center space-x-1.5 text-sm font-semibold">
-                    <span className={
-                      proposal.finalStatus === 'for_sustaining' || proposal.finalStatus === 'for_recording' || proposal.finalStatus === 'sustained'
-                        ? 'text-emerald-700 dark:text-emerald-400'
-                        : 'text-blue-700 dark:text-blue-400'
-                    }>
-                      {proposal.finalStatus === 'for_sustaining' || proposal.finalStatus === 'for_recording' || proposal.finalStatus === 'sustained'
-                        ? 'Calling:'
-                        : 'Proposed Calling:'}
-                    </span>
-                    <span className="text-slate-900 dark:text-white font-bold">{proposal.callingTitle}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    <div className="flex items-center space-x-1.5">
+                      <span className={
+                        proposal.finalStatus === 'for_sustaining' || proposal.finalStatus === 'for_recording' || proposal.finalStatus === 'sustained'
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-blue-700 dark:text-blue-400'
+                      }>
+                        {proposal.finalStatus === 'for_sustaining' || proposal.finalStatus === 'for_recording' || proposal.finalStatus === 'sustained'
+                          ? 'Calling:'
+                          : 'Proposed Calling:'}
+                      </span>
+                      <span className="text-slate-900 dark:text-white font-bold">{proposal.callingTitle}</span>
+                    </div>
+
+                    {/* SUPER ADMIN: Move / Edit Calling Action */}
+                    {currentUser.isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setEditCallingModalProposal(proposal)}
+                        className="inline-flex items-center space-x-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/80 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                        title="Move candidate or edit calling assignment (Super Admin)"
+                        id={`btn-edit-calling-${proposal.id}`}
+                      >
+                        <ArrowRightLeft className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                        <span>Move / Edit Calling</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Underneath: Small Releasing Info, Proposed By & Date */}
@@ -943,6 +977,20 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+                      {/* Super Admin Move Calling Button */}
+                      {currentUser.isSuperAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setEditCallingModalProposal(proposal)}
+                          className="bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs py-2 px-3 sm:py-1.5 sm:px-3 rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
+                          title="Super Admin: Move candidate to another calling"
+                          id={`btn-stage2-move-calling-${proposal.id}`}
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Move Calling</span>
+                        </button>
+                      )}
+
                       {/* Member Declined Button */}
                       <button
                         type="button"
@@ -1009,6 +1057,20 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+                      {/* Super Admin Move Calling Button */}
+                      {currentUser.isSuperAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setEditCallingModalProposal(proposal)}
+                          className="bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs py-2 px-3 sm:py-1.5 sm:px-3 rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
+                          title="Super Admin: Move candidate to another calling before sustaining"
+                          id={`btn-stage3-move-calling-${proposal.id}`}
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Move Calling</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -1115,6 +1177,25 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
                         </button>
                       )}
                     </div>
+
+                    {/* Stage 4 Super Admin Reassign Action */}
+                    {currentUser.isSuperAdmin && (
+                      <div className="sm:col-span-2 pt-2 border-t border-blue-200/60 dark:border-blue-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-[11px] text-blue-900 dark:text-blue-300">
+                          Need to reassign or adjust this recorded calling?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setEditCallingModalProposal(proposal)}
+                          className="bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs py-1.5 px-3 rounded-xl transition-colors flex items-center space-x-1.5 cursor-pointer self-end"
+                          title="Super Admin: Move or edit calling assignment"
+                          id={`btn-stage4-move-calling-${proposal.id}`}
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>Move / Edit Calling (Super Admin)</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1592,6 +1673,21 @@ export const ApprovalsQueue: React.FC<ApprovalsQueueProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Super Admin Move / Edit Calling Modal */}
+      {editCallingModalProposal && (
+        <EditProposalCallingModal
+          isOpen={!!editCallingModalProposal}
+          onClose={() => setEditCallingModalProposal(null)}
+          proposal={editCallingModalProposal}
+          allCallings={allCallings}
+          onConfirm={async (propId, data) => {
+            if (onEditProposalCalling) {
+              await onEditProposalCalling(propId, data);
+            }
+          }}
+        />
       )}
 
     </div>

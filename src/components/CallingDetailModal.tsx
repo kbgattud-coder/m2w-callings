@@ -12,7 +12,8 @@ import {
   Edit3, 
   ShieldCheck, 
   CheckCircle2,
-  Calendar
+  Calendar,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface CallingDetailModalProps {
@@ -32,6 +33,7 @@ interface CallingDetailModalProps {
   onDeleteCalling?: (callingId: string, callingTitle: string) => void;
   onDeleteProposal?: (proposalId: string, callingTitle?: string) => void;
   onResetProposal?: (proposalId: string, reason?: string) => void;
+  onEditProposalCalling?: (proposal: CallingProposal) => void;
 }
 
 export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
@@ -46,6 +48,7 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
   onDeleteCalling,
   onDeleteProposal,
   onResetProposal,
+  onEditProposalCalling,
 }) => {
   if (!calling) return null;
 
@@ -190,7 +193,7 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
 
           {/* Active Proposal Alert Banner */}
           {activeProposal && (
-            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-800 space-y-1.5">
+            <div className="p-3.5 bg-blue-50 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-800 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-blue-950 dark:text-blue-200 flex items-center space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -200,12 +203,28 @@ export const CallingDetailModal: React.FC<CallingDetailModalProps> = ({
                   {activeProposal.finalStatus.replace(/_/g, ' ')}
                 </span>
               </div>
-              <p className="text-xs text-blue-800 dark:text-blue-300">
-                Proposed Candidate: <strong className="text-blue-950 dark:text-white font-bold">{activeProposal.proposedMemberName}</strong>
-                {activeProposal.candidates && activeProposal.candidates.length > 1 && (
-                  <span className="ml-1 text-slate-500 dark:text-slate-400">({activeProposal.candidates.length} in candidate pool)</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <p className="text-xs text-blue-800 dark:text-blue-300">
+                  Proposed Candidate: <strong className="text-blue-950 dark:text-white font-bold">{activeProposal.proposedMemberName}</strong>
+                  {activeProposal.candidates && activeProposal.candidates.length > 1 && (
+                    <span className="ml-1 text-slate-500 dark:text-slate-400">({activeProposal.candidates.length} in candidate pool)</span>
+                  )}
+                </p>
+                {currentUser?.isSuperAdmin && onEditProposalCalling && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onEditProposalCalling(activeProposal);
+                    }}
+                    className="inline-flex items-center space-x-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950 hover:bg-indigo-200 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs self-end sm:self-auto"
+                    title="Move candidate or edit calling assignment (Super Admin)"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Move / Edit Calling</span>
+                  </button>
                 )}
-              </p>
+              </div>
             </div>
           )}
 
