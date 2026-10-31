@@ -19,6 +19,8 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CouncilRoom"] }],
 
+  // Cloudflare creates the DNS record and certificate for this hostname on deploy
+  "routes": [{ "pattern": "callings.masagana2nd.com", "custom_domain": true }],
   "workers_dev": true,
   "observability": { "enabled": true }
 
