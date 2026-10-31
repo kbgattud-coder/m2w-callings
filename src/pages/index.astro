@@ -1,0 +1,35 @@
+---
+import App from '../App';
+import '../index.css';
+
+const title = 'Masagana 2nd Ward Calling Approvals';
+const description =
+  'Church calling approvals and vacancy management tool with 3-point bishopric sign-off for Masagana 2nd Ward.';
+const icon = 'https://pub-5497f73b6290403fb534fbb3f47ef636.r2.dev/root/Masagana%202nd%20192x192.svg';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={icon} />
+    <link rel="icon" type="image/svg+xml" href={icon} />
+    <link rel="apple-touch-icon" href={icon} />
+    <script is:inline>
+      // Apply the saved theme before the React app mounts to avoid a light flash.
+      try {
+        const saved = localStorage.getItem('masagana_theme_dark');
+        const dark = saved !== null ? saved === 'true' : matchMedia('(prefers-color-scheme: dark)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <App client:only="react" />
+  </body>
+</html>

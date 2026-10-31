@@ -1,0 +1,3 @@
+# Local secrets for `wrangler dev`. Copy to .dev.vars.
+# Only needed to test the Firestore import locally (scripts/import-data.mjs).
+IMPORT_TOKEN=local-import-token

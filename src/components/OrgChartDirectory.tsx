@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Calling, CallingFilterStatus, CallingProposal, AuthUser } from '../types';
+import type { Calling, CallingFilterStatus, CallingProposal, AuthUser } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
 import { sortCallings } from '../utils/callingSort';
 import { ProposalPreviewModal } from './ProposalPreviewModal';

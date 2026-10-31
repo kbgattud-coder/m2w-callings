@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calling, CallingProposal } from '../types';
+import type { Calling, CallingProposal } from '../types';
 import { getTodayDateString, formatDateForDisplay } from '../utils/tenure';
 import { 
   X, 

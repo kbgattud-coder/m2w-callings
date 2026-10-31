@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calling, CallingProposal } from '../types';
+import type { Calling, CallingProposal } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
 import { 
   X, 

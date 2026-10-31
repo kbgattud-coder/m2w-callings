@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calling, WardMember } from '../types';
+import type { Calling, WardMember } from '../types';
 import { ORGANIZATIONS } from './Sidebar';
 import { X, PlusCircle, Building2, User, Calendar, CheckCircle2 } from 'lucide-react';
 

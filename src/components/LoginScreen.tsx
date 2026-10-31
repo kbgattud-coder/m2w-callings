@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthUser } from '../types';
+import type { AuthUser } from '../types';
 import { FIXED_USERS, SUPER_ADMIN_PASSWORD } from '../data/initialData';
 import { 
   Building2, 

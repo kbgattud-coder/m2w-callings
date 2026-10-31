@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Calling, BishopricRole, WardMember, ProposalType, AuthUser, CandidateOption, CallingProposal } from '../types';
+import type { Calling, BishopricRole, WardMember, ProposalType, AuthUser, CandidateOption, CallingProposal } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
 import { sortCallings } from '../utils/callingSort';
 import { X, UserPlus, AlertCircle, CheckCircle2, Users, Plus, Trash2, HelpCircle, Star, Sparkles } from 'lucide-react';
