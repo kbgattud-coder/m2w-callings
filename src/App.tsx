@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
+import type { 
   BishopricRole, 
   ViewTab, 
   Calling, 
@@ -22,17 +22,17 @@ import {
   subscribeToCallings, 
   subscribeToProposals, 
   subscribeToCouncilMessages,
-  saveCallingToFirestore, 
-  deleteCallingFromFirestore, 
-  saveProposalToFirestore, 
-  deleteProposalFromFirestore, 
-  saveCouncilMessageToFirestore,
-  deleteCouncilMessageFromFirestore,
-  resetFirestoreToDefaults,
+  saveCalling, 
+  deleteCalling, 
+  saveProposal, 
+  deleteProposal, 
+  saveCouncilMessage,
+  deleteCouncilMessage,
+  resetToDefaults,
   ensureDatabaseSeeded,
   clearAllProposalsHistory,
   clearProposalHistory
-} from './services/firestoreService';
+} from './services/dataService';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { LoginScreen } from './components/LoginScreen';
@@ -124,10 +124,10 @@ export default function App() {
     setIsDarkMode(prev => !prev);
   };
 
-  // Firestore Real-time Cloud Sync Status
+  // Real-time Cloud Sync Status
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'syncing' | 'error'>('connecting');
 
-  // Main Callings State (cached initially from localStorage or defaults, then synced via Firestore)
+  // Main Callings State (cached initially from localStorage or defaults, then synced live from the cloud)
   const [callings, setCallings] = useState<Calling[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CALLINGS);
     if (saved) {
@@ -173,7 +173,7 @@ export default function App() {
     onConfirm: () => void;
   } | null>(null);
 
-  // 1. Setup Firestore Real-time Subscriptions & Cloud Sync
+  // 1. Setup Real-time Subscriptions & Cloud Sync
   useEffect(() => {
     setSyncStatus('connecting');
 
@@ -367,13 +367,13 @@ export default function App() {
       setSelectedCallingDetail(updatedCalling);
     }
 
-    // Persist to Cloud Firestore
+    // Persist to the cloud
     setSyncStatus('syncing');
     try {
-      await saveCallingToFirestore(updatedCalling);
+      await saveCalling(updatedCalling);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync setApart status to Firestore:', e);
+      console.error('Failed to sync setApart status to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -493,17 +493,17 @@ export default function App() {
       };
 
       setCouncilMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
-      saveCouncilMessageToFirestore(newMsg).catch(err => {
+      saveCouncilMessage(newMsg).catch(err => {
         console.error('Failed to post disapproval message to Council Message Board:', err);
       });
     }
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync proposal approval to Firestore:', e);
+      console.error('Failed to sync proposal approval to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -543,7 +543,7 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to sync interviewer assignment:', e);
@@ -578,7 +578,7 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to sync interview completion:', e);
@@ -639,10 +639,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync member decline to Firestore:', e);
+      console.error('Failed to sync member decline to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -675,7 +675,7 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
       console.error('Failed to sync LCR recording status:', e);
@@ -718,7 +718,7 @@ export default function App() {
     setSyncStatus('syncing');
     try {
       for (const p of updatedProposals.filter(p => (p.finalStatus === 'for_recording' || p.finalStatus === 'sustained'))) {
-        await saveProposalToFirestore(p);
+        await saveProposal(p);
       }
       setSyncStatus('connected');
     } catch (e) {
@@ -762,10 +762,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync proposal reset to Firestore:', e);
+      console.error('Failed to sync proposal reset to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -819,7 +819,7 @@ export default function App() {
       await clearProposalHistory(proposalId);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to clear proposal history in Firestore:', e);
+      console.error('Failed to clear proposal history in the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -864,11 +864,11 @@ export default function App() {
     // Instant local state update
     setCouncilMessages(prev => [...prev.filter(m => m.id !== newMsg.id), newMsg]);
 
-    // Persist directly to Firestore
+    // Persist directly to the cloud
     try {
-      await saveCouncilMessageToFirestore(newMsg);
+      await saveCouncilMessage(newMsg);
     } catch (err) {
-      console.error('Failed to save council message to Firestore:', err);
+      console.error('Failed to save council message to the cloud:', err);
     }
   };
 
@@ -877,11 +877,11 @@ export default function App() {
     // Instant optimistic update
     setCouncilMessages(prev => prev.filter(m => m.id !== messageId));
 
-    // Persist deletion to Firestore
+    // Persist deletion to the cloud
     try {
-      await deleteCouncilMessageFromFirestore(messageId);
+      await deleteCouncilMessage(messageId);
     } catch (err) {
-      console.error('Failed to delete council message from Firestore:', err);
+      console.error('Failed to delete council message from the cloud:', err);
     }
   };
 
@@ -940,10 +940,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to finalize candidate for Stage 1 in Firestore:', e);
+      console.error('Failed to finalize candidate for Stage 1 in the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -976,10 +976,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to close discussion in Firestore:', e);
+      console.error('Failed to close discussion in the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1016,10 +1016,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync superadmin approval to Firestore:', e);
+      console.error('Failed to sync superadmin approval to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1060,10 +1060,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync candidate selection to Firestore:', e);
+      console.error('Failed to sync candidate selection to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1134,10 +1134,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync added candidate to Firestore:', e);
+      console.error('Failed to sync added candidate to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1186,10 +1186,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync candidate removal to Firestore:', e);
+      console.error('Failed to sync candidate removal to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1240,10 +1240,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(updatedProposal);
+      await saveProposal(updatedProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync candidate update to Firestore:', e);
+      console.error('Failed to sync candidate update to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1288,16 +1288,16 @@ export default function App() {
     setCallings(prev => sortCallings(prev.map(c => c.id === proposal.callingId ? updatedCalling : c)));
     setProposals(prev => prev.map(p => p.id === proposal.id ? updatedProposal : p));
 
-    // Save to Firestore
+    // Save to the cloud
     setSyncStatus('syncing');
     try {
       await Promise.all([
-        saveCallingToFirestore(updatedCalling),
-        saveProposalToFirestore(updatedProposal)
+        saveCalling(updatedCalling),
+        saveProposal(updatedProposal)
       ]);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync sustained status to Firestore:', e);
+      console.error('Failed to sync sustained status to the cloud:', e);
       setSyncStatus('error');
     }
 
@@ -1366,13 +1366,13 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveCallingToFirestore(updatedCalling);
+      await saveCalling(updatedCalling);
       if (updatedProposal) {
-        await saveProposalToFirestore(updatedProposal);
+        await saveProposal(updatedProposal);
       }
       setSyncStatus('connected');
     } catch (err) {
-      console.error('Failed to sync direct calling update to Firestore:', err);
+      console.error('Failed to sync direct calling update to the cloud:', err);
       setSyncStatus('error');
     }
   };
@@ -1543,19 +1543,19 @@ export default function App() {
       tag: 'general',
     };
     setCouncilMessages(prev => [...prev, noticeMsg]);
-    saveCouncilMessageToFirestore(noticeMsg).catch(err => console.error(err));
+    saveCouncilMessage(noticeMsg).catch(err => console.error(err));
 
-    // Sync to Firestore
+    // Sync to the cloud
     setSyncStatus('syncing');
     try {
-      const promises: Promise<any>[] = [saveProposalToFirestore(updatedProposal)];
+      const promises: Promise<any>[] = [saveProposal(updatedProposal)];
       for (const c of callingsToSave) {
-        promises.push(saveCallingToFirestore(c));
+        promises.push(saveCalling(c));
       }
       await Promise.all(promises);
       setSyncStatus('connected');
     } catch (err) {
-      console.error('Failed to sync reassigned calling to Firestore:', err);
+      console.error('Failed to sync reassigned calling to the cloud:', err);
       setSyncStatus('error');
     }
   };
@@ -1643,10 +1643,10 @@ export default function App() {
 
       setSyncStatus('syncing');
       try {
-        await saveProposalToFirestore(updatedProposal);
+        await saveProposal(updatedProposal);
         setSyncStatus('connected');
       } catch (e) {
-        console.error('Failed to sync merged proposal candidate pool to Firestore:', e);
+        console.error('Failed to sync merged proposal candidate pool to the cloud:', e);
         setSyncStatus('error');
       }
       return;
@@ -1691,10 +1691,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveProposalToFirestore(newProposal);
+      await saveProposal(newProposal);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync new proposal to Firestore:', e);
+      console.error('Failed to sync new proposal to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1727,10 +1727,10 @@ export default function App() {
 
     setSyncStatus('syncing');
     try {
-      await saveCallingToFirestore(newCalling);
+      await saveCalling(newCalling);
       setSyncStatus('connected');
     } catch (e) {
-      console.error('Failed to sync custom calling to Firestore:', e);
+      console.error('Failed to sync custom calling to the cloud:', e);
       setSyncStatus('error');
     }
   };
@@ -1762,11 +1762,11 @@ export default function App() {
 
         setSyncStatus('syncing');
         try {
-          await deleteCallingFromFirestore(callingId);
-          await Promise.all(relatedProposals.map(p => deleteProposalFromFirestore(p.id)));
+          await deleteCalling(callingId);
+          await Promise.all(relatedProposals.map(p => deleteProposal(p.id)));
           setSyncStatus('connected');
         } catch (e) {
-          console.error('Failed to sync calling deletion to Firestore:', e);
+          console.error('Failed to sync calling deletion to the cloud:', e);
           setSyncStatus('error');
         }
       }
@@ -1794,35 +1794,35 @@ export default function App() {
 
         setSyncStatus('syncing');
         try {
-          await deleteProposalFromFirestore(proposalId);
+          await deleteProposal(proposalId);
           setSyncStatus('connected');
         } catch (e) {
-          console.error('Failed to delete proposal from Firestore:', e);
+          console.error('Failed to delete proposal from the cloud:', e);
           setSyncStatus('error');
         }
       }
     });
   };
 
-  // Reset Data to Original Default in Cloud Firestore
+  // Reset Data to Original Default in the cloud
   const handleResetData = () => {
     setConfirmDialog({
       isOpen: true,
       title: 'Reset Ward Database',
-      message: 'Are you sure you want to reset all calling approvals and restoration data to the ward default report in cloud Firestore?',
+      message: 'Are you sure you want to reset all calling approvals and restoration data to the ward default report in the cloud database?',
       confirmLabel: 'Reset Database',
       variant: 'warning',
       onConfirm: async () => {
         setSyncStatus('syncing');
         try {
-          await resetFirestoreToDefaults();
+          await resetToDefaults();
           setCallings(sortCallings(INITIAL_CALLINGS));
           setProposals(INITIAL_PROPOSALS);
           localStorage.removeItem(STORAGE_KEYS.CALLINGS);
           localStorage.removeItem(STORAGE_KEYS.PROPOSALS);
           setSyncStatus('connected');
         } catch (e) {
-          console.error('Failed to reset Firestore to defaults:', e);
+          console.error('Failed to reset the cloud data to defaults:', e);
           setSyncStatus('error');
         }
       }
@@ -1979,7 +1979,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-3 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors">
         <p>
-          Masagana 2nd Ward (298506) • Antipolo Philippines Stake (527467) • Calling Approvals System • Cloud Firestore Synced
+          Masagana 2nd Ward (298506) • Antipolo Philippines Stake (527467) • Calling Approvals System • Cloud Synced
         </p>
       </footer>
 

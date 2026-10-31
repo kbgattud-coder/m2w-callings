@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BishopricRole, CallingProposal, ApprovalStatus, AuthUser, Calling, CandidateOption, CouncilMessage } from '../types';
+import type { BishopricRole, CallingProposal, ApprovalStatus, AuthUser, Calling, CandidateOption, CouncilMessage } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
 import { getUpcomingSunday, formatDateReadable } from '../utils/dateUtils';
 import { EditProposalCallingModal } from './EditProposalCallingModal';

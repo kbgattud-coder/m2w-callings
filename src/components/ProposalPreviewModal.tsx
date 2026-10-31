@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CallingProposal, Calling, AuthUser, BishopricRole } from '../types';
+import type { CallingProposal, Calling, AuthUser, BishopricRole } from '../types';
 import { BISHOPRIC_LEADERS } from '../data/initialData';
 import { 
   X, 

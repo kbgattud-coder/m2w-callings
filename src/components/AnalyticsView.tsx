@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Calling } from '../types';
+import type { Calling } from '../types';
 import { calculateTenure, formatDateForDisplay } from '../utils/tenure';
 import { 
   Clock, 

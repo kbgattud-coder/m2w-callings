@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["worker", "worker/worker-configuration.d.ts", "src/lib/syncProtocol.ts"]
+}

@@ -1,4 +1,4 @@
-import { Calling, CallingProposal, WardMember, AuthUser } from '../types';
+import type { Calling, CallingProposal, WardMember, AuthUser } from '../types';
 
 export const SUPER_ADMIN_PASSWORD = '@Bubby1994';
 

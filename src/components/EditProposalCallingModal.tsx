@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calling, CallingProposal } from '../types';
+import type { Calling, CallingProposal } from '../types';
 import { 
   X, 
   ShieldCheck, 

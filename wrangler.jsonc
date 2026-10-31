@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "m2w-callings",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+
+  // A small Worker in front of the static Astro build. It answers /api/*; everything else is
+  // served from ./dist (the app is a single page).
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // All callings data (callings, proposals, council messages, system metadata) lives in one
+  // Durable Object, which also pushes every change to open devices over WebSockets (/api/live).
+  "durable_objects": {
+    "bindings": [{ "name": "COUNCIL", "class_name": "CouncilRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CouncilRoom"] }],
+
+  "workers_dev": true,
+  "observability": { "enabled": true }
+
+  // Secrets (not stored here), set with `npx wrangler secret put <NAME>` or .dev.vars locally:
+  //   IMPORT_TOKEN – only while importing the Firestore export; delete it afterwards
+}

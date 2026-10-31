@@ -1,4 +1,4 @@
-import { Calling } from '../types';
+import type { Calling } from '../types';
 
 /**
  * Organizations canonical order matching Church leadership structure

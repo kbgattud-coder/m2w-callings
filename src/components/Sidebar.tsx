@@ -1,5 +1,5 @@
 import React from 'react';
-import { ViewTab, AuthUser } from '../types';
+import type { ViewTab, AuthUser } from '../types';
 import { 
   Building2, 
   FileCheck2, 
@@ -323,7 +323,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </>
               )}
             </div>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Firestore</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Cloudflare</span>
           </div>
 
           {/* User Profile Card */}
